@@ -22,6 +22,10 @@ def _conectar_servidor() -> dict:
     Necesario para autenticarse antes de leer o escribir archivos.
     Retorna {"ok": True} o {"ok": False, "error": "..."}
     """
+    # [Modificación para pruebas en Linux]
+    if os.name != 'nt':
+        return {"ok": True, "nota": "Simulado en Linux"}
+
     try:
         resultado = subprocess.run(
             [
@@ -48,13 +52,6 @@ def publicar_wallpaper(ruta_imagen: str) -> dict:
     """
     Copia la imagen seleccionada por el admin a la carpeta
     compartida del servidor como 'wallpaper.jpg'.
-
-    Pasos:
-      1. Verifica que la imagen existe y es válida
-      2. Se autentica en el servidor con net use
-      3. Copia la imagen a la carpeta compartida
-
-    Retorna {"ok": True} o {"ok": False, "error": "..."}
     """
 
     # ── 1. Verificar que el archivo existe ────────────────────
@@ -64,6 +61,10 @@ def publicar_wallpaper(ruta_imagen: str) -> dict:
     extensiones_validas = (".jpg", ".jpeg", ".png", ".bmp")
     if not ruta_imagen.lower().endswith(extensiones_validas):
         return {"ok": False, "error": "Formato no soportado. Usa JPG, PNG o BMP"}
+
+    # [Modificación para pruebas en Linux]
+    if os.name != 'nt':
+        return {"ok": True, "destino": "SIMULADOR_LINUX (no se copió el archivo)"}
 
     # ── 2. Conectar al servidor ───────────────────────────────
     conexion = _conectar_servidor()
