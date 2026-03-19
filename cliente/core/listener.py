@@ -33,7 +33,9 @@ def iniciar_listener():
 
         try:
             data = conn.recv(1024).decode().strip()
-            manejar_comando(data)
+            if data:
+                manejar_comando(data)
+                conn.sendall("OK".encode("utf-8"))
         except Exception as e:
             print("[ERROR] leyendo datos:", e)
 

@@ -1,0 +1,7 @@
+# =============================================================
+#  HERMES — requirements.txt
+#  Instalar con: pip install -r requirements.txt
+# =============================================================
+
+# Interfaz gráfica del admin (ventana HTML/CSS/JS embebida)
+pywebview==5.3.2
