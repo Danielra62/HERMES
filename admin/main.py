@@ -25,7 +25,7 @@ def main():
     api._window = window
     
     # Inicializar aplicación
-    webview.start(debug=True)
+    webview.start()
 
 if __name__ == '__main__':
     main()
