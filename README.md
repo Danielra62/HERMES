@@ -96,21 +96,33 @@ Los mensajes entre admin y cliente son strings simples enviados por TCP:
 
 ---
 
-## Cómo correr en desarrollo
+## Cómo correr y probar en desarrollo
+
+> [!WARNING]
+> Dado que este sistema utiliza bibliotecas nativas de Windows (`ctypes.windll`, conectores a red de Windows `net use`), **el programa Cliente sólo puede ejecutarse en Windows**. Puedes probar el *Admin* en Linux interactuando con su interfaz, pero las copias de archivos por red dispararán un error a menos que lo levantes en Windows.
 
 ### 1. Instalar dependencias
+Asegúrate de estar en un entorno virtual e instala los requerimientos:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Correr el cliente (en cada PC destino)
-```bash
-python cliente/main.py
-```
+*(Si pruebas el Admin en Linux, es posible que necesites las dependencias de webkit para PyWebView: `sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1`).*
 
-### 3. Correr el admin
+### 2. Configuración Inicial Básica (Para pruebas)
+Antes de nada, revisa `shared/constants.py` y asegúrate de que **IP_SERVIDOR**, **SERVIDOR_USUARIO**, etc., apunten a una ruta que realmente exista en tu red. 
+Para tu primera prueba local, no necesitas tocar nada más que agregar tu IP local (ej. `127.0.0.1`) en la pestaña de "Clientes" del admin.
+
+### 3. Correr la interfaz del Administrador
+Abre una terminal en la raíz del proyecto y arranca la interfaz premium.
 ```bash
 python admin/main.py
+```
+
+### 4. Correr el Cliente (Simples Pruebas)
+En otra computadora **Windows** (o en la misma, para simulación pura de red, sabiendo que el cambio de Wallpaper aplicará a ti mismo):
+```bash
+python cliente/main.py
 ```
 
 ---
