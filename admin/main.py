@@ -25,7 +25,7 @@ def main():
     api._window = window
     
     # Inicializar aplicación
-    webview.start()
+    webview.start(gui='edgechromium')
 
 if __name__ == '__main__':
     main()

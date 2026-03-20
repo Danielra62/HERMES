@@ -54,3 +54,19 @@ def enviar_mensaje_uno(ip: str, titulo: str, texto: str, icono: str = "info") ->
         return construccion
 
     return enviar_a_uno(ip, construccion["orden"])
+
+def enviar_mensaje_grupo(grupo: str, titulo: str, texto: str, icono: str = "info") -> dict:
+    """
+    Envía un mensaje emergente a todos los clientes de un grupo específico.
+    Retorna el resumen de resultados.
+    """
+    from admin.core.clients import obtener_grupos
+    from admin.core.network import enviar_a_lista
+
+    construccion = _construir_orden(titulo, texto, icono)
+    if not construccion["ok"]:
+        return construccion
+
+    ips = [c["ip"] for c in obtener_grupos().get(grupo, [])]
+    resultados = enviar_a_lista(construccion["orden"], ips)
+    return resumen(resultados)

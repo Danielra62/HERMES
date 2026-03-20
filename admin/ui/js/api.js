@@ -11,11 +11,20 @@ const api = {
     getTotalClientes: async () => {
         return await window.pywebview.api.get_total_clientes();
     },
-    addCliente: async (ip) => {
-        return await window.pywebview.api.add_cliente(ip);
+    addCliente: async (grupo, nombre, ip) => {
+        return await window.pywebview.api.add_cliente(grupo, nombre, ip);
     },
-    removeCliente: async (ip) => {
-        return await window.pywebview.api.remove_cliente(ip);
+    removeCliente: async (grupo, ip) => {
+        return await window.pywebview.api.remove_cliente(grupo, ip);
+    },
+    editCliente: async (grupo, ipOriginal, nuevoNombre, nuevaIp) => {
+        return await window.pywebview.api.edit_cliente(grupo, ipOriginal, nuevoNombre, nuevaIp);
+    },
+    addGrupo: async (nombre) => {
+    return await window.pywebview.api.add_grupo(nombre);
+    },
+    removeGrupo: async (nombre) => {
+        return await window.pywebview.api.remove_grupo(nombre);
     },
 
     // Wallpaper
@@ -24,6 +33,13 @@ const api = {
     },
     cambiarFondo: async (ruta) => {
         return await window.pywebview.api.cambiar_fondo(ruta);
+    },
+
+    cambiarFondoGrupo: async (grupo, ruta) => {
+        return await window.pywebview.api.cambiar_fondo_grupo(grupo, ruta);
+    },
+    cambiarFondoUno: async (ip, ruta) => {
+        return await window.pywebview.api.cambiar_fondo_uno(ip, ruta);
     },
 
     // Mensajes
@@ -35,7 +51,10 @@ const api = {
     },
     getIconos: async () => {
         return await window.pywebview.api.get_iconos();
-    }
+    },
+    mensajeGrupo: async (grupo, titulo, texto, icono) => {
+        return await window.pywebview.api.mensaje_grupo(grupo, titulo, texto, icono);
+    },
 };
 
 // Exportamos api globalmente en app.js no usamos módulos ES6

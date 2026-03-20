@@ -53,7 +53,7 @@
             <section id="wallpaper" class="view hidden">
                 <header>
                     <h2>Fondo de Pantalla</h2>
-                    <p class="subtitle">Cambia el fondo de todos los clientes en la red</p>
+                    <p class="subtitle">Cambia el fondo de pantalla en la red</p>
                 </header>
                 <div class="content-box glass">
                     <div class="form-group">
@@ -63,8 +63,42 @@
                             <button id="btn-seleccionar-img" class="btn primary">Examinar...</button>
                         </div>
                     </div>
+
+                    <div class="form-group">
+                        <label>Destinatarios</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="wp-target" value="todos" checked> Todos los clientes
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="wp-target" value="grupo"> Por grupo
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="wp-target" value="uno"> Un equipo específico
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Selector de grupo (oculto por defecto) -->
+                    <div id="wp-grupo-container" class="form-group hidden">
+                        <label>Grupo</label>
+                        <select id="wp-grupo" class="input">
+                            <option value="LABORATORIO1">LABORATORIO 1</option>
+                            <option value="LABORATORIO2">LABORATORIO 2</option>
+                            <option value="AULAS">AULAS</option>
+                        </select>
+                    </div>
+
+                    <!-- Selector de equipo individual (oculto por defecto) -->
+                    <div id="wp-uno-container" class="form-group hidden">
+                        <label>Equipo</label>
+                        <select id="wp-cliente-select" class="input">
+                            <option value="">-- Selecciona un equipo --</option>
+                        </select>
+                    </div>
+
                     <div class="actions">
-                        <button id="btn-aplicar-fondo" class="btn success" disabled>Aplicar a todos</button>
+                        <button id="btn-aplicar-fondo" class="btn success" disabled>Aplicar</button>
                     </div>
                     <div id="wp-resultados" class="result-box hidden"></div>
                 </div>
@@ -93,22 +127,38 @@
                         <label for="msg-texto">Cuerpo del mensaje</label>
                         <textarea id="msg-texto" rows="4" placeholder="Escribe el mensaje aquí..."></textarea>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Destinatarios</label>
                         <div class="radio-group">
                             <label class="radio-label">
-                                <input type="radio" name="msg-target" value="todos" checked> A todos los clientes
+                                <input type="radio" name="msg-target" value="todos" checked> Todos los clientes
                             </label>
                             <label class="radio-label">
-                                <input type="radio" name="msg-target" value="uno"> A un cliente específico
+                                <input type="radio" name="msg-target" value="grupo"> Por grupo
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="msg-target" value="uno"> Un equipo específico
                             </label>
                         </div>
                     </div>
-                    
+
+                    <!-- Selector de grupo -->
+                    <div id="msg-grupo-container" class="form-group hidden">
+                        <label>Grupo</label>
+                        <select id="msg-grupo" class="input">
+                            <option value="LABORATORIO1">LABORATORIO 1</option>
+                            <option value="LABORATORIO2">LABORATORIO 2</option>
+                            <option value="AULAS">AULAS</option>
+                        </select>
+                    </div>
+
+                    <!-- Selector de equipo individual -->
                     <div id="msg-ip-container" class="form-group hidden">
-                        <label for="msg-ip">IP del Cliente</label>
-                        <input type="text" id="msg-ip" placeholder="Ej: 172.16.20.45">
+                        <label>Equipo</label>
+                        <select id="msg-cliente-select" class="input">
+                            <option value="">-- Selecciona un equipo --</option>
+                        </select>
                     </div>
 
                     <div class="actions">
@@ -118,16 +168,16 @@
                 </div>
             </section>
 
-            <!-- CLIENTES VIEW -->
+           <!-- CLIENTES VIEW -->
             <section id="clientes" class="view hidden">
                 <header>
                     <h2>Gestión de Clientes</h2>
-                    <p class="subtitle">Administra las IPs de los equipos en la red</p>
+                    <p class="subtitle">Administra los equipos organizados por grupo</p>
                 </header>
-                
+
                 <div class="content-split">
                     <div class="content-box glass list-box">
-                        <h3>Lista de IPs Registradas (<span id="cli-count">0</span>)</h3>
+                        <h3>Equipos Registrados (<span id="cli-count">0</span>)</h3>
                         <ul id="cli-lista" class="ip-list">
                             <!-- Se llena dinámicamente -->
                         </ul>
@@ -135,10 +185,41 @@
                     <div class="content-box glass action-box">
                         <h3>Añadir Cliente</h3>
                         <div class="form-group">
-                            <input type="text" id="cli-nueva-ip" placeholder="172.16.20.X">
+                            <label>Grupo</label>
+                            <select id="cli-grupo" class="input">
+                                <option value="LABORATORIO1">LABORATORIO 1</option>
+                                <option value="LABORATORIO2">LABORATORIO 2</option>
+                                <option value="AULAS">AULAS</option>
+                            </select>
                         </div>
-                        <button id="btn-add-cliente" class="btn primary full-width">Registrar IP</button>
+                        <div class="form-group">
+                            <label>Nombre del PC</label>
+                            <input type="text" id="cli-nueva-nombre" class="input" placeholder="Ej: PC1">
+                        </div>
+                        <div class="form-group">
+                            <label>Dirección IP</label>
+                            <input type="text" id="cli-nueva-ip" class="input" placeholder="Ej: 172.16.20.31">
+                        </div>
+                        <button id="btn-add-cliente" class="btn primary full-width">Registrar</button>
                         <div id="cli-error" class="error-msg hidden"></div>
+                    </div>
+                    <div class="content-box glass action-box" style="margin-top: 16px;">
+                        <h3>Gestionar Grupos</h3>
+                        <div class="form-group">
+                            <label>Nuevo Grupo</label>
+                            <input type="text" id="cli-nuevo-grupo" class="input" placeholder="Ej: LABORATORIO3">
+                        </div>
+                        <button id="btn-add-grupo" class="btn primary full-width">Crear Grupo</button>
+                        <div id="cli-grupo-error" class="error-msg hidden"></div>
+
+                        <hr style="margin: 16px 0; border-color: var(--border);">
+
+                        <h4 style="margin-bottom: 10px;">Eliminar Grupo</h4>
+                        <select id="cli-grupo-eliminar" class="input">
+                            <!-- Se llena dinámicamente -->
+                        </select>
+                        <button id="btn-remove-grupo" class="btn danger full-width" style="margin-top: 8px;">Eliminar Grupo</button>
+                        <div id="cli-grupo-error2" class="error-msg hidden"></div>
                     </div>
                 </div>
             </section>
