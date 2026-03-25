@@ -92,3 +92,22 @@ def resumen(resultados: list[dict]) -> dict:
         "fallidos": len(fallidos),
         "fallos":   [{"ip": r["ip"], "error": r["error"]} for r in fallidos]
     }
+
+def enviar_a_lista(orden: str, ips: list[str]) -> list[dict]:
+    """
+    Envía una orden a una lista específica de IPs (en paralelo).
+    Útil para enviar a un grupo o a un subconjunto de clientes.
+    """
+    if not ips:
+        return []
+
+    resultados = [None] * len(ips)
+
+    def tarea(index, ip):
+        resultados[index] = _enviar_a_uno(ip, orden)
+
+    hilos = [threading.Thread(target=tarea, args=(i, ip), daemon=True) for i, ip in enumerate(ips)]
+    for t in hilos: t.start()
+    for t in hilos: t.join()
+
+    return resultados

@@ -3,8 +3,8 @@
     --bg-dark: #0f172a;
     --bg-card: rgba(30, 41, 59, 0.7);
     --bg-sidebar: #1e293b;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
+    --text-main: #fbf8fc;
+    --text-muted: #55595f;
     --primary: #3b82f6;
     --primary-hover: #2563eb;
     --success: #10b981;
@@ -209,7 +209,7 @@ input[type="text"]:focus, select:focus, textarea:focus {
     cursor: pointer;
     border: none;
     transition: all 0.2s;
-    color: #fff;
+    color: #000000;
 }
 
 .btn:disabled {
