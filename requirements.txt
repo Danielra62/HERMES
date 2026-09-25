@@ -1,14 +1,19 @@
 # =============================================================
-#  HERMES — requirements.txt
+#  HERMES — requirements.txt (general, para desarrollo local)
 #  Instalar con: pip install -r requirements.txt
+#  Python 3.12.x
+#
+#  Este archivo es SOLO para tu venv de desarrollo combinado, donde
+#  trabajas con admin/ y cliente/ a la vez desde la misma máquina.
+#
+#  NO se usa para Docker: cada Dockerfile instala directo desde
+#  admin/requirements.txt o cliente/requirements.txt según corresponda,
+#  para que cada imagen quede liviana y sin dependencias del otro lado.
+#
+#  Al usar -r aquí abajo, este archivo simplemente reusa el contenido
+#  de los otros dos -- si agregas algo a admin/ o cliente/, se refleja
+#  aquí automáticamente sin tener que mantener una tercera copia.
 # =============================================================
 
-# Interfaz gráfica del admin (ventana HTML/CSS/JS embebida)
-pywebview==5.3.2
-mysql-connector-python
-python-dotenv
-
-
-# Para la base de datos MySQL
-mysql-connector-python
-# En caso de tener problemas iniciando el admin, verifique si está instalado el WebView2, deberías encontrarlo como "Instalador independiente Evergreen"
+-r admin/requirements.txt
+-r cliente/requirements.txt

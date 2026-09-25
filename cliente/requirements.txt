@@ -1,0 +1,13 @@
+# =============================================================
+#  HERMES — cliente/requirements.txt
+#  Instalar con: pip install -r cliente/requirements.txt
+#  Python 3.12.x
+# =============================================================
+
+# Al día de hoy (0.7), cliente/ no tiene dependencias externas:
+# usa únicamente librería estándar (ctypes para MessageBox/fondo de
+# pantalla via SystemParametersInfoW, socket para el listener TCP,
+# subprocess para "net use").
+
+# --- Pendiente de agregar cuando se implemente 0.x (envío de imágenes) ---
+# Pillow  # decodificar imágenes recibidas y convertir a BMP para SystemParametersInfoW
