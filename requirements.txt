@@ -5,6 +5,10 @@
 
 # Interfaz gráfica del admin (ventana HTML/CSS/JS embebida)
 pywebview==5.3.2
+mysql-connector-python
+python-dotenv
 
 
+# Para la base de datos MySQL
+mysql-connector-python
 # En caso de tener problemas iniciando el admin, verifique si está instalado el WebView2, deberías encontrarlo como "Instalador independiente Evergreen"

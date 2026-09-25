@@ -8,6 +8,10 @@
             {
                 "nombre": "PC2",
                 "ip": "172.16.20.32"
+            },
+            {
+                "nombre": "TestCrud1",
+                "ip": "172.16.20.33"
             }
         ],
         "LABORATORIO2": [
