@@ -9,8 +9,6 @@ from mysql.connector import Error, IntegrityError
 
 load_dotenv()
 
-GRUPOS_DEFAULT = ["LABORATORIO1", "LABORATORIO2", "AULAS"]
-
 
 def _conexion():
     """Abre una conexion nueva; nunca se comparte entre hilos."""
@@ -28,22 +26,12 @@ def _error(mensaje: str) -> dict:
     return {"ok": False, "error": mensaje}
 
 
-def _asegurar_grupos_default(cursor) -> None:
-    for nombre in GRUPOS_DEFAULT:
-        cursor.execute(
-            "INSERT IGNORE INTO grupos (nombre) VALUES (%s)",
-            (nombre,),
-        )
-
-
 def obtener_grupos() -> dict:
     """Retorna un diccionario de grupos con sus clientes."""
     conexion = None
     try:
         conexion = _conexion()
         cursor = conexion.cursor(dictionary=True)
-        _asegurar_grupos_default(cursor)
-        conexion.commit()
         cursor.execute(
             """
             SELECT g.nombre AS grupo, c.nombre AS nombre, c.ip AS ip
@@ -211,17 +199,12 @@ def editar_cliente(grupo: str, ip_original: str, nuevo_nombre: str, nueva_ip: st
 
 
 def limpiar_clientes() -> dict:
-    """Elimina clientes y conserva los tres grupos predeterminados."""
+    """Elimina todos los clientes y conserva los grupos existentes."""
     conexion = None
     try:
         conexion = _conexion()
         cursor = conexion.cursor(dictionary=True)
         cursor.execute("DELETE FROM clientes")
-        cursor.execute(
-            "DELETE FROM grupos WHERE nombre NOT IN (%s, %s, %s)",
-            tuple(GRUPOS_DEFAULT),
-        )
-        _asegurar_grupos_default(cursor)
         conexion.commit()
         return {"ok": True}
     except Error as exc:
