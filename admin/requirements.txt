@@ -1,0 +1,26 @@
+# =============================================================
+#  HERMES — admin/requirements.txt
+#  Instalar con: pip install -r admin/requirements.txt
+#  Python 3.12.x
+# =============================================================
+
+# Interfaz gráfica del admin (ventana HTML/CSS/JS embebida)
+# TODO (tarjeta 4.1): quedará obsoleta cuando el admin pase a ser
+# Flask/FastAPI sirviendo el mismo admin/ui/ vía navegador. Al migrar,
+# se reemplaza esta línea por flask (o fastapi+uvicorn), y solo hay
+# que reescribir admin/ui/js/api.js (fetch a endpoints REST en vez
+# del puente window.pywebview.api). El HTML/CSS y la lógica de app.js
+# se reutilizan casi sin cambios.
+pywebview==5.3.2
+
+# Conexión con la base de datos MySQL
+mysql-connector-python
+
+# Carga de variables de entorno (.env) para credenciales de BD
+python-dotenv
+
+# Nota (WebView2): si el admin no inicia, verifica que esté instalado
+# WebView2 -- "Instalador independiente Evergreen".
+
+# --- Pendiente de agregar cuando se implemente 0.x (envío de imágenes) ---
+# Pillow  # compresión/redimensionado de imágenes antes de enviarlas al cliente

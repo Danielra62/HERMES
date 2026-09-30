@@ -172,6 +172,29 @@ procesar una orden.
 
 Iconos disponibles: `info`, `pregunta`, `alerta` y `error`.
 
+## Protocolo TCP v2 (en desarrollo)
+
+El modulo compartido `shared/protocol.py` define framing binario para una
+version futura del protocolo. El header tiene tamaño fijo de 10 bytes y usa
+el formato `!BBII` (orden de bytes de red):
+
+| Campo | Tamaño en bytes | Tipo | Descripcion |
+|---|---:|---|---|
+| `version` | 1 | unsigned byte | Version del protocolo; actualmente `1`. |
+| `tipo_orden` | 1 | unsigned byte | Codigo numerico del tipo de orden. |
+| `order_id` | 4 | unsigned int | Identificador de la orden. |
+| `longitud_payload` | 4 | unsigned int | Cantidad de bytes que siguen al header. |
+
+Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
+(`3`) y `HEARTBEAT` (`4`). El payload se transporta como bytes; cada tipo de
+orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
+crudos.
+
+Este framing aun no esta conectado al envio del administrador ni al listener
+del cliente. El protocolo v1 sigue siendo el que se usa activamente:
+`CAMBIAR_FONDO` y `MENSAJE|titulo|texto|icono`. La migracion de esos comandos
+a v2 corresponde a la tarjeta 0.6.
+
 ## Pruebas rapidas
 
 Comprobar imports y sintaxis desde la raiz:
