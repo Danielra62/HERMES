@@ -1,61 +1,120 @@
-/**
- * HERMES - Wrapper de la API Python a JS
- * Todas las llamadas a pywebview.api se encapsulan aquí.
- */
+/** HERMES - cliente HTTP para la API Flask. */
+
+let archivoWallpaper = null;
+
+async function requestJSON(url, options = {}) {
+    const response = await fetch(url, options);
+    const resultado = await response.json();
+    if (!response.ok && !resultado.error) {
+        resultado.error = `Error HTTP ${response.status}`;
+    }
+    return resultado;
+}
+
+function jsonOptions(method, body) {
+    return {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    };
+}
+
+async function uploadAndApply(endpoint, ruta, extra = {}) {
+    if (!archivoWallpaper || ruta !== archivoWallpaper.name) {
+        return {
+            publicacion: { ok: false, error: 'Selecciona una imagen antes de continuar' },
+            envio: null,
+        };
+    }
+
+    const formData = new FormData();
+    formData.append('imagen', archivoWallpaper);
+    const subida = await requestJSON('/api/fondo/subir', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!subida.ok) {
+        return { publicacion: subida, envio: null };
+    }
+
+    const resultado = await requestJSON(endpoint, jsonOptions('POST', {
+        ...extra,
+        upload_id: subida.upload_id,
+    }));
+    if (resultado.publicacion?.ok) {
+        archivoWallpaper = null;
+        document.getElementById('wp-file').value = '';
+    }
+    return resultado;
+}
 
 const api = {
     // Clientes
-    getClientes: async () => {
-        return await window.pywebview.api.get_clientes();
-    },
-    getTotalClientes: async () => {
-        return await window.pywebview.api.get_total_clientes();
-    },
-    addCliente: async (grupo, nombre, ip) => {
-        return await window.pywebview.api.add_cliente(grupo, nombre, ip);
-    },
-    removeCliente: async (grupo, ip) => {
-        return await window.pywebview.api.remove_cliente(grupo, ip);
-    },
-    editCliente: async (grupo, ipOriginal, nuevoNombre, nuevaIp) => {
-        return await window.pywebview.api.edit_cliente(grupo, ipOriginal, nuevoNombre, nuevaIp);
-    },
-    addGrupo: async (nombre) => {
-    return await window.pywebview.api.add_grupo(nombre);
-    },
-    removeGrupo: async (nombre) => {
-        return await window.pywebview.api.remove_grupo(nombre);
-    },
+    getClientes: () => requestJSON('/api/clientes'),
+    getTotalClientes: () => requestJSON('/api/clientes/total'),
+    addCliente: (grupo, nombre, ip) => requestJSON(
+        '/api/clientes', jsonOptions('POST', { grupo, nombre, ip })
+    ),
+    removeCliente: (grupo, ip) => requestJSON(
+        `/api/clientes/${encodeURIComponent(ip)}`,
+        jsonOptions('DELETE', { grupo })
+    ),
+    editCliente: (grupo, ipOriginal, nuevoNombre, nuevaIp) => requestJSON(
+        `/api/clientes/${encodeURIComponent(ipOriginal)}`,
+        jsonOptions('PUT', {
+            grupo,
+            nuevo_nombre: nuevoNombre,
+            nueva_ip: nuevaIp,
+        })
+    ),
+    addGrupo: (nombre) => requestJSON('/api/grupos', jsonOptions('POST', { nombre })),
+    removeGrupo: (nombre) => requestJSON(
+        `/api/grupos/${encodeURIComponent(nombre)}`,
+        { method: 'DELETE' }
+    ),
 
-    // Wallpaper
-    seleccionarImagen: async () => {
-        return await window.pywebview.api.seleccionar_imagen();
-    },
-    cambiarFondo: async (ruta) => {
-        return await window.pywebview.api.cambiar_fondo(ruta);
-    },
-
-    cambiarFondoGrupo: async (grupo, ruta) => {
-        return await window.pywebview.api.cambiar_fondo_grupo(grupo, ruta);
-    },
-    cambiarFondoUno: async (ip, ruta) => {
-        return await window.pywebview.api.cambiar_fondo_uno(ip, ruta);
-    },
+    // Fondos
+    seleccionarImagen: () => new Promise((resolve) => {
+        const input = document.getElementById('wp-file');
+        const limpiarEventos = () => {
+            input.removeEventListener('change', alCambiar);
+            input.removeEventListener('cancel', alCancelar);
+        };
+        const alCambiar = () => {
+            limpiarEventos();
+            archivoWallpaper = input.files[0] || null;
+            resolve(archivoWallpaper
+                ? { ok: true, ruta: archivoWallpaper.name }
+                : { ok: false, error: 'Selección cancelada' });
+        };
+        const alCancelar = () => {
+            limpiarEventos();
+            resolve({ ok: false, error: 'Selección cancelada' });
+        };
+        input.value = '';
+        input.addEventListener('change', alCambiar, { once: true });
+        input.addEventListener('cancel', alCancelar, { once: true });
+        input.click();
+    }),
+    cambiarFondo: (ruta) => uploadAndApply('/api/fondo', ruta),
+    cambiarFondoGrupo: (grupo, ruta) => uploadAndApply(
+        '/api/fondo/grupo', ruta, { grupo }
+    ),
+    cambiarFondoUno: (ip, ruta) => uploadAndApply(
+        '/api/fondo/cliente', ruta, { ip }
+    ),
 
     // Mensajes
-    mensajeTodos: async (titulo, texto, icono) => {
-        return await window.pywebview.api.mensaje_todos(titulo, texto, icono);
-    },
-    mensajeUno: async (ip, titulo, texto, icono) => {
-        return await window.pywebview.api.mensaje_uno(ip, titulo, texto, icono);
-    },
-    getIconos: async () => {
-        return await window.pywebview.api.get_iconos();
-    },
-    mensajeGrupo: async (grupo, titulo, texto, icono) => {
-        return await window.pywebview.api.mensaje_grupo(grupo, titulo, texto, icono);
-    },
+    mensajeTodos: (titulo, texto, icono) => requestJSON(
+        '/api/mensajes', jsonOptions('POST', { titulo, texto, icono })
+    ),
+    mensajeUno: (ip, titulo, texto, icono) => requestJSON(
+        '/api/mensajes/cliente', jsonOptions('POST', { ip, titulo, texto, icono })
+    ),
+    mensajeGrupo: (grupo, titulo, texto, icono) => requestJSON(
+        '/api/mensajes/grupo', jsonOptions('POST', { grupo, titulo, texto, icono })
+    ),
+    getIconos: () => requestJSON('/api/iconos'),
 };
 
-// Exportamos api globalmente en app.js no usamos módulos ES6
 window.hermesApi = api;

@@ -10,14 +10,14 @@ Version configurada en el proyecto: `0.1.0`.
 
 Actualmente estan implementadas estas funciones:
 
-- Interfaz grafica de escritorio con PyWebView.
+- Interfaz web servida por Flask en el puerto `8080`.
 - Dashboard con el total de clientes registrados.
 - Registro, edicion y eliminacion de clientes.
 - Organizacion de clientes por grupos.
 - Creacion y eliminacion de grupos.
 - Cambio de fondo para todos los clientes, un grupo o un equipo.
 - Mensajes emergentes para todos los clientes, un grupo o un equipo.
-- Persistencia de clientes y grupos en `clientes.json`.
+- Persistencia de clientes y grupos en MySQL/MariaDB.
 - Envio paralelo de ordenes TCP y resumen de equipos exitosos y fallidos.
 
 No hay autenticacion entre el administrador y los clientes. La aplicacion
@@ -48,10 +48,10 @@ construye la ruta de esa imagen y la aplica con `SystemParametersInfoW`.
 HERMES/
 |
 |-- admin/
-|   |-- main.py              # Arranque de la interfaz PyWebView
-|   |-- app.py               # API Python expuesta al frontend
+|   |-- main.py              # Servidor Flask y archivos estaticos
+|   |-- app.py               # Endpoints HTTP del frontend
 |   |-- core/
-|   |   |-- clients.py       # Clientes y grupos en clientes.json
+|   |   |-- clients.py       # Acceso MySQL a clientes y grupos
 |   |   |-- messaging.py     # Construccion de mensajes
 |   |   |-- network.py       # Envio TCP paralelo
 |   |   `-- wallpaper.py     # Conexion SMB y copia de imagenes
@@ -59,7 +59,7 @@ HERMES/
 |       |-- index.html
 |       |-- css/styles.css
 |       `-- js/
-|           |-- api.js       # Wrapper de la API PyWebView
+|           |-- api.js       # Cliente fetch para la API HTTP
 |           `-- app.js       # Logica de la interfaz
 |
 |-- cliente/
@@ -82,7 +82,7 @@ HERMES/
 - Python 3.10 o posterior.
 - Python instalado y un entorno virtual activo.
 - Red local con conectividad entre administrador y clientes.
-- WebView2 instalado para PyWebView en el equipo administrador.
+- MySQL/MariaDB disponible y configurado en `.env`.
 - Carpeta compartida `Wallpapers` con permisos de lectura para los clientes y
   permisos de escritura para el administrador.
 - Puerto TCP `5005` permitido en los clientes.
@@ -126,9 +126,8 @@ NOMBRE_IMAGEN = "fondo.jpeg"
 La configuracion actual contiene credenciales de ejemplo en texto plano.
 Deben reemplazarse antes de desplegar el sistema.
 
-Los clientes registrados actualmente estan en `clientes.json`, agrupados en:
-`LABORATORIO1`, `LABORATORIO2` y `AULAS`. Tambien se pueden administrar desde
-la vista **Clientes** de la interfaz.
+Los clientes y grupos se administran desde la vista **Clientes** y se guardan
+en la base de datos `hermes`.
 
 ## Ejecucion
 
@@ -140,6 +139,9 @@ virtual activo.
 ```powershell
 python -m admin.main
 ```
+
+Luego abre `http://localhost:8080` en el navegador. Flask escucha en
+`0.0.0.0:8080` para permitir el acceso desde otros equipos o contenedores.
 
 La interfaz tiene estas vistas:
 
@@ -168,7 +170,10 @@ procesar una orden.
 | Orden | Formato | Accion |
 |---|---|---|
 | Cambio de fondo | `CAMBIAR_FONDO` | Aplica `\\servidor\Wallpapers\fondo.jpeg`. |
-| Mensaje | `MENSAJE\|titulo\|texto\|icono` | Muestra un MessageBox de Windows. |
+
+El formato textual `MENSAJE|titulo|texto|icono` se conserva en el cliente para
+compatibilidad v1, pero el administrador actual ya envia los mensajes mediante
+el framing v2 descrito a continuacion.
 
 Iconos disponibles: `info`, `pregunta`, `alerta` y `error`.
 
@@ -180,7 +185,7 @@ el formato `!BBII` (orden de bytes de red):
 
 | Campo | Tamaño en bytes | Tipo | Descripcion |
 |---|---:|---|---|
-| `version` | 1 | unsigned byte | Version del protocolo; actualmente `1`. |
+| `version` | 1 | unsigned byte | Version del formato binario del header; actualmente `1`, independiente de la etiqueta de migracion `v2`. |
 | `tipo_orden` | 1 | unsigned byte | Codigo numerico del tipo de orden. |
 | `order_id` | 4 | unsigned int | Identificador de la orden. |
 | `longitud_payload` | 4 | unsigned int | Cantidad de bytes que siguen al header. |
@@ -190,10 +195,10 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
 
-Este framing aun no esta conectado al envio del administrador ni al listener
-del cliente. El protocolo v1 sigue siendo el que se usa activamente:
-`CAMBIAR_FONDO` y `MENSAJE|titulo|texto|icono`. La migracion de esos comandos
-a v2 corresponde a la tarjeta 0.6.
+El envio de mensajes `MENSAJE` ya usa este framing, y el listener distingue
+v1 de v2 inspeccionando el primer byte de cada conexion. `CAMBIAR_FONDO`
+continua usando el protocolo v1 de texto plano. La migracion de los comandos
+restantes corresponde a tarjetas posteriores.
 
 ## Pruebas rapidas
 

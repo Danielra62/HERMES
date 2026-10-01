@@ -2,21 +2,18 @@
  * HERMES - Lógica de la Interfaz del Administrador
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Referencias UI (Navegación)
     const navBtnElements = document.querySelectorAll('.nav-btn');
     const viewElements = document.querySelectorAll('.view');
     const loader = document.getElementById('loader');
 
-    // Inicializar la aplicación cuando PyWebView esté listo
-    window.addEventListener('pywebviewready', async () => {
-        loader.classList.remove('active'); // Ocultar loader
-        switchView('dashboard'); // Mostrar la vista principal
-        await initDashboard();
-        await initMessagesForm();
-        await renderClientsList();
-        setupEventListeners();
-    });
+    loader.classList.remove('active');
+    switchView('dashboard');
+    await initDashboard();
+    await initMessagesForm();
+    await renderClientsList();
+    setupEventListeners();
 
     // --- NAVEGACIÓN ---
     function switchView(targetId) {
@@ -114,19 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await window.hermesApi.editCliente(grupo, ip, nuevoNombre, nuevaIp);
         if (res.ok) await renderClientsList();
         else alert(`Error: ${res.error}`);
-    };
-
-    // Funciones globales para inline handlers (como en clientes)
-    window.removeCliente = async (ip) => {
-        if(confirm(`¿Seguro de eliminar la IP ${ip}?`)) {
-            const res = await window.hermesApi.removeCliente(ip);
-            if(res.ok) {
-                await renderClientsList();
-                await initDashboard();
-            } else {
-                alert(`Error al eliminar: ${res.error}`);
-            }
-        }
     };
 
     // --- EVENT LISTENERS PRINCIPALES ---

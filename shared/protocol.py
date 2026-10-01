@@ -5,6 +5,8 @@ import struct
 from enum import IntEnum
 
 
+# Version del formato binario del header; es independiente del apodo "v2"
+# usado por el equipo para esta migracion general del protocolo del proyecto.
 VERSION_PROTOCOLO = 1
 FORMATO_HEADER = "!BBII"
 TAMANO_HEADER = struct.calcsize(FORMATO_HEADER)
