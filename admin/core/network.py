@@ -3,14 +3,15 @@
 #  Envío de órdenes por socket TCP a los clientes
 # =============================================================
 
+import secrets
 import socket
 import threading
 from admin.core.clients import obtener_clientes
 from shared.constants import PUERTO, TIMEOUT
-from shared.protocol import enviar_orden
+from shared.protocol import TipoOrden, enviar_orden, recv_exact
 
 
-_order_id = 0
+_order_id = secrets.randbits(32)
 _order_id_lock = threading.Lock()
 
 
@@ -19,6 +20,8 @@ def _siguiente_order_id() -> int:
     global _order_id
     with _order_id_lock:
         _order_id = (_order_id + 1) & 0xFFFFFFFF
+        if _order_id == 0:
+            _order_id = 1
         return _order_id
 
 
@@ -60,6 +63,60 @@ def _enviar_v2_a_uno(ip: str, tipo_orden: int, payload: bytes) -> dict:
         return {"ip": ip, "ok": False, "error": "RECHAZADO — cliente no activo"}
     except OSError as e:
         return {"ip": ip, "ok": False, "error": str(e)}
+
+
+def _enviar_payload_v2_a_uno(
+    ip: str,
+    tipo_orden: TipoOrden,
+    payload: bytes,
+) -> dict:
+    """Envía una orden binaria y considera éxito únicamente el ACK `OK`."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(TIMEOUT)
+            s.connect((ip, PUERTO))
+            enviar_orden(s, tipo_orden, _siguiente_order_id(), payload)
+            respuesta = recv_exact(s, 2)
+            if respuesta != b"OK":
+                return {
+                    "ip": ip,
+                    "ok": False,
+                    "error": f"ACK inesperado: {respuesta!r}",
+                }
+            return {"ip": ip, "ok": True, "respuesta": "OK"}
+    except socket.timeout:
+        return {"ip": ip, "ok": False, "error": "TIMEOUT — PC apagada o inaccesible"}
+    except ConnectionRefusedError:
+        return {"ip": ip, "ok": False, "error": "RECHAZADO — cliente no activo"}
+    except OSError as e:
+        return {"ip": ip, "ok": False, "error": str(e)}
+
+
+def enviar_payload_v2_a_lista(
+    tipo_orden: TipoOrden,
+    payload: bytes,
+    ips: list[str],
+) -> list[dict]:
+    """Envía los mismos bytes a una lista de clientes en paralelo."""
+    if tipo_orden not in (TipoOrden.CAMBIAR_FONDO, TipoOrden.IMAGEN):
+        raise ValueError(f"Tipo de orden binaria no soportado: {tipo_orden}")
+    if not ips:
+        return []
+
+    resultados = [None] * len(ips)
+
+    def tarea(index: int, ip: str) -> None:
+        resultados[index] = _enviar_payload_v2_a_uno(ip, tipo_orden, payload)
+
+    hilos = [
+        threading.Thread(target=tarea, args=(index, ip), daemon=True)
+        for index, ip in enumerate(ips)
+    ]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join()
+    return resultados
 
 
 def _enviar_v2_a_lista(tipo_orden: int, payload: bytes, ips: list[str]) -> list[dict]:

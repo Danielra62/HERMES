@@ -13,5 +13,4 @@ mysql-connector-python
 # Carga de variables de entorno (.env) para credenciales de BD
 python-dotenv
 
-# --- Pendiente de agregar cuando se implemente 0.x (envío de imágenes) ---
-# Pillow  # compresión/redimensionado de imágenes antes de enviarlas al cliente
+Pillow==11.3.0

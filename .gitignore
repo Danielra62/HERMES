@@ -29,3 +29,6 @@ Thumbs.db
 # Logs y archivos temporales
 *.log
 *.tmp
+
+# Imágenes comprimidas subidas al administrador (montar como volumen en Docker)
+admin/storage/

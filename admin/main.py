@@ -1,6 +1,7 @@
 from flask import Flask, render_template
 
 from admin.app import api
+from admin.core.image_processing import MAX_UPLOAD_BYTES
 
 
 app = Flask(
@@ -9,7 +10,7 @@ app = Flask(
     static_folder="ui",
     static_url_path="/static",
 )
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 app.register_blueprint(api)
 
 
@@ -20,7 +21,7 @@ def index():
 
 @app.errorhandler(413)
 def archivo_demasiado_grande(_error):
-    return {"ok": False, "error": "El archivo supera el máximo permitido de 32 MB"}, 413
+    return {"ok": False, "error": "La solicitud supera el máximo permitido de 20 MB"}, 413
 
 
 def main():

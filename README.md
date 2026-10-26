@@ -17,8 +17,8 @@ Actualmente estan implementadas estas funciones:
 - Creacion y eliminacion de grupos.
 - Cambio de fondo para todos los clientes, un grupo o un equipo.
 - Mensajes emergentes para todos los clientes, un grupo o un equipo.
-- Recepcion v2 de imagenes y fondos en el cliente; el envio desde el admin
-  para esos tipos aun no esta integrado.
+- Envio de imagenes y fondos por TCP v2 desde los endpoints backend del admin;
+  la interfaz web para esos endpoints queda pendiente.
 - Persistencia de clientes y grupos en MySQL/MariaDB.
 - Envio paralelo de ordenes TCP y resumen de equipos exitosos y fallidos.
 
@@ -29,21 +29,19 @@ firewall de los equipos cliente.
 ## Arquitectura
 
 ```text
-[Administrador]
-     |
-     | TCP, puerto 5005
-     v
-[Clientes Windows]
-     |
-     | leen el fondo desde la carpeta compartida
-     v
-[Servidor SMB: \\172.16.20.196\Wallpapers]
+[Administrador] -- TCP v1/v2, puerto 5005 --> [Clientes Windows]
+      |
+      +-- SMB (solo fondo v1 antiguo) --> [Servidor SMB]
+                                              ^
+                                              | lectura del fondo v1
+                                       [Clientes Windows]
 ```
 
-Actualmente, el flujo del administrador para cambiar el fondo copia la imagen
-seleccionada a la carpeta compartida como `fondo.jpeg` y envia
-`CAMBIAR_FONDO` por v1. El listener del cliente tambien acepta fondos e
-imagenes por TCP v2; el admin aun no ha migrado el envio de esos tipos.
+El flujo antiguo del administrador copia la imagen seleccionada a la carpeta
+compartida como `fondo.jpeg` y envia `CAMBIAR_FONDO` por v1. Los endpoints
+backend v2 comprimen las imagenes en el admin y envian sus bytes directamente
+al listener del cliente por TCP; la interfaz web todavia usa el flujo antiguo
+hasta integrar estos endpoints en la tarjeta 1.4.
 
 ## Estructura
 
@@ -55,6 +53,7 @@ HERMES/
 |   |-- app.py               # Endpoints HTTP del frontend
 |   |-- core/
 |   |   |-- clients.py       # Acceso MySQL a clientes y grupos
+|   |   |-- image_processing.py # Validacion, compresion y almacenamiento
 |   |   |-- messaging.py     # Construccion de mensajes
 |   |   |-- network.py       # Envio TCP paralelo
 |   |   `-- wallpaper.py     # Conexion SMB y copia de imagenes
@@ -208,9 +207,15 @@ muestra en una ventana y el archivo temporal se elimina al cerrarla.
 porque Windows mantiene su ruta. Los payloads `hermes_imagen_*.bin` de mas de
 siete dias se limpian al arrancar el listener y al recibir ordenes v2.
 
-El administrador sigue enviando `CAMBIAR_FONDO` por v1; su envio por v2 aun
-no esta integrado en la interfaz. Para probar la recepcion del cliente con una
-imagen real desde la raiz del proyecto:
+El backend del admin expone `POST /api/imagenes/subir` (multipart, campo
+`imagen`) para validar y comprimir una foto, y `POST /api/imagenes/enviar`
+para enviar el `image_id` resultante. Este ultimo recibe `tipo` (`fondo` o
+`imagen`) y `destino` (`todos`, `grupo` con `grupo`, o `equipo` con `ip`).
+Los JPEG comprimidos se guardan en `HERMES_STORAGE_DIR`, que por defecto es
+`admin/storage`; configura esa ruta como volumen persistente en Docker. El
+endpoint existente `POST /api/fondo/subir` y los endpoints v1 de fondo siguen
+disponibles hasta la tarjeta 1.6. Estos endpoints nuevos aun no estan
+conectados a la interfaz web.
 
 ```powershell
 python -m scripts.pruebas.prueba_envio_imagen_v2 --tipo imagen --archivo "C:\ruta\foto.jpg"
