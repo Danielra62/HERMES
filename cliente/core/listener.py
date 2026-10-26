@@ -13,11 +13,11 @@ from tkinter import ttk
 
 from PIL import Image, ImageTk
 
-from shared.constants import PUERTO, CMD_CAMBIAR_FONDO, CMD_MENSAJE
+from shared.constants import PUERTO, CMD_MENSAJE
 from shared.constants import TIMEOUT
 from shared.protocol import VERSION_PROTOCOLO, TipoOrden, recibir_orden
 
-from cliente.core.wallpaper import aplicar_fondo, cambiar_fondo
+from cliente.core.wallpaper import aplicar_fondo
 from cliente.core.messaging import mostrar_mensaje
 
 HOST = "0.0.0.0"
@@ -43,10 +43,7 @@ _COLA_IMAGENES: queue.Queue[_ImagenEncolada] = queue.Queue()
 def manejar_comando(data):
     print(f"[CMD] {data}")
 
-    if data == CMD_CAMBIAR_FONDO:
-        cambiar_fondo()
-
-    elif data.startswith(CMD_MENSAJE):
+    if data.startswith(CMD_MENSAJE):
         try:
             _, titulo, texto, icono = data.split("|")
             mostrar_mensaje(titulo, texto, icono)

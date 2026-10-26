@@ -1,8 +1,8 @@
 # HERMES
 
 Sistema de administracion remota para una red local. El administrador permite
-enviar mensajes emergentes y cambiar el fondo de pantalla de los equipos
-cliente mediante sockets TCP y una carpeta compartida de Windows.
+enviar mensajes emergentes e imagenes, y cambiar el fondo de pantalla de los
+equipos cliente mediante sockets TCP.
 
 ## Estado actual
 
@@ -17,8 +17,7 @@ Actualmente estan implementadas estas funciones:
 - Creacion y eliminacion de grupos.
 - Cambio de fondo para todos los clientes, un grupo o un equipo.
 - Mensajes emergentes para todos los clientes, un grupo o un equipo.
-- Envio de imagenes y fondos por TCP v2 desde los endpoints backend del admin;
-  la interfaz web para esos endpoints queda pendiente.
+- Envio de imagenes y fondos por TCP v2 desde la interfaz web del admin.
 - Persistencia de clientes y grupos en MySQL/MariaDB.
 - Envio paralelo de ordenes TCP y resumen de equipos exitosos y fallidos.
 
@@ -29,18 +28,13 @@ firewall de los equipos cliente.
 ## Arquitectura
 
 ```text
-[Administrador] -- TCP v1/v2, puerto 5005 --> [Clientes Windows]
-      |
-      +-- SMB (solo fondo v1 antiguo) --> [Servidor SMB]
-                                              ^
-                                              | lectura del fondo v1
-                                       [Clientes Windows]
+[Administrador] -- TCP v2, puerto 5005 --> [Clientes Windows]
 ```
 
-El flujo antiguo del administrador copia la imagen seleccionada a la carpeta
-compartida como `fondo.jpeg` y envia `CAMBIAR_FONDO` por v1. La vista Fondos
-actual envia imagenes y fondos mediante TCP v2; los endpoints y el mecanismo
-SMB antiguos permanecen disponibles hasta su retiro en la tarjeta 1.6.
+Los mensajes, imagenes emergentes y cambios de fondo se envian por TCP. Los
+fondos se transportan exclusivamente como payload binario mediante el protocolo
+TCP v2; el cliente los guarda localmente y aplica el archivo local convertido
+a BMP.
 
 ## Estructura
 
@@ -55,7 +49,6 @@ HERMES/
 |   |   |-- image_processing.py # Validacion, compresion y almacenamiento
 |   |   |-- messaging.py     # Construccion de mensajes
 |   |   |-- network.py       # Envio TCP paralelo
-|   |   `-- wallpaper.py     # Conexion SMB y copia de imagenes
 |   `-- ui/
 |       |-- index.html
 |       |-- css/styles.css
@@ -66,12 +59,11 @@ HERMES/
 |-- cliente/
 |   |-- main.py              # Arranque del cliente
 |   `-- core/
-|       |-- auth.py          # Conexion con net use
-|       |-- listener.py      # Servidor TCP
+|   |-- listener.py      # Servidor TCP
 |       |-- messaging.py     # MessageBox de Windows
 |       `-- wallpaper.py     # Fondo de Windows
 |
-|-- shared/constants.py     # Puerto, ruta SMB, comandos y version
+|-- shared/constants.py     # Puerto, comandos y version
 |-- clientes.json            # Clientes y grupos registrados
 |-- requirements.txt
 `-- README.md
@@ -84,12 +76,9 @@ HERMES/
 - Python instalado y un entorno virtual activo.
 - Red local con conectividad entre administrador y clientes.
 - MySQL/MariaDB disponible y configurado en `.env`.
-- Carpeta compartida `Wallpapers` con permisos de lectura para los clientes y
-  permisos de escritura para el administrador.
 - Puerto TCP `5005` permitido en los clientes.
 
-El administrador puede iniciarse en otros sistemas para probar la interfaz.
-En Linux, la publicacion del fondo se simula y no copia el archivo realmente;
+El administrador puede iniciarse en otros sistemas para probar la interfaz;
 las conexiones TCP a los clientes siguen siendo reales.
 
 ## Instalacion
@@ -112,20 +101,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 
 ## Configuracion
 
-Editar `shared/constants.py` antes de usar el sistema en la red real:
+Revisa `shared/constants.py` antes de usar el sistema en la red real:
 
 ```python
 PUERTO = 5005
 TIMEOUT = 5
-IP_SERVIDOR = "172.16.20.196"
-SERVIDOR_USUARIO = "usuario"
-SERVIDOR_PASSWORD = "usuario"
-CARPETA_COMPARTIDA = r"\\172.16.20.196\Wallpapers"
-NOMBRE_IMAGEN = "fondo.jpeg"
 ```
-
-La configuracion actual contiene credenciales de ejemplo en texto plano.
-Deben reemplazarse antes de desplegar el sistema.
 
 Los clientes y grupos se administran desde la vista **Clientes** y se guardan
 en la base de datos `hermes`.
@@ -159,9 +140,8 @@ En cada PC cliente Windows:
 python -m cliente.main
 ```
 
-El cliente intenta conectar la carpeta compartida con `net use` y despues
-escucha en `0.0.0.0:5005`. Debe iniciarse en cada PC que vaya a recibir
-ordenes.
+El cliente inicia directamente el listener y escucha en `0.0.0.0:5005`. Debe
+iniciarse en cada PC que vaya a recibir ordenes.
 
 ## Protocolo TCP
 
@@ -170,11 +150,11 @@ procesar una orden.
 
 | Orden | Formato | Accion |
 |---|---|---|
-| Cambio de fondo | `CAMBIAR_FONDO` | Aplica `\\servidor\Wallpapers\fondo.jpeg`. |
-
 El formato textual `MENSAJE|titulo|texto|icono` se conserva en el cliente para
-compatibilidad v1, pero el administrador actual ya envia los mensajes mediante
-el framing v2 descrito a continuacion.
+compatibilidad con clientes anteriores, pero el administrador actual envia los
+mensajes mediante el framing v2 descrito a continuacion. Los cambios de fondo
+no tienen un camino textual: se envian exclusivamente como `CAMBIAR_FONDO`
+v2 con payload binario.
 
 Iconos disponibles: `info`, `pregunta`, `alerta` y `error`.
 
@@ -196,9 +176,8 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
 
-El listener distingue v1 de v2 inspeccionando el primer byte de cada conexion
-y recibe completamente el payload v2 con `recv_exact`. `MENSAJE` viaja como
-JSON UTF-8. `IMAGEN` se valida y se guarda temporalmente; despues del ACK se
+El listener recibe completamente el payload v2 con `recv_exact`. `MENSAJE`
+viaja como JSON UTF-8. `IMAGEN` se valida y se guarda temporalmente; despues del ACK se
 muestra en una ventana y el archivo temporal se elimina al cerrarla.
 `CAMBIAR_FONDO` v2 se guarda temporalmente, se convierte a
 `%LOCALAPPDATA%\Temp\HermesTemp\fondo_actual.bmp` y se aplica con
@@ -211,10 +190,8 @@ El backend del admin expone `POST /api/imagenes/subir` (multipart, campo
 para enviar el `image_id` resultante. Este ultimo recibe `tipo` (`fondo` o
 `imagen`) y `destino` (`todos`, `grupo` con `grupo`, o `equipo` con `ip`).
 Los JPEG comprimidos se guardan en `HERMES_STORAGE_DIR`, que por defecto es
-`admin/storage`; configura esa ruta como volumen persistente en Docker. El
-La vista Fondos de la interfaz usa estos endpoints. El endpoint existente
-`POST /api/fondo/subir` y los endpoints v1 de fondo siguen disponibles hasta
-la tarjeta 1.6.
+`admin/storage`; configura esa ruta como volumen persistente en Docker. La
+vista Fondos de la interfaz usa estos endpoints.
 
 ```powershell
 python -m scripts.pruebas.prueba_envio_imagen_v2 --tipo imagen --archivo "C:\ruta\foto.jpg"
@@ -231,20 +208,17 @@ python -m compileall -q admin cliente shared
 ```
 
 Para una prueba local de red, registra `127.0.0.1` como cliente y ejecuta el
-cliente en otra terminal. El cambio de fondo solo funcionara si la carpeta
-compartida configurada es accesible y el cliente es Windows.
+cliente en otra terminal. El cliente Windows puede recibir el fondo por TCP v2
+sin depender de recursos compartidos de archivos.
 
 ## Estado conocido
 
 - El cliente usa APIs de Windows (`ctypes.windll`) y no es portable a Linux o
   macOS.
-- La copia del fondo depende de SMB, credenciales validas y permisos de red.
 - El cliente se ejecuta en segundo plano, pero muestra ventanas tkinter para
   imagenes recibidas por v2.
 - El listener no registra clientes automaticamente: el administrador debe
   tener sus IPs en `clientes.json`.
-- El flujo de reintento de conexion del cliente cuando falla `net use` esta
-  pendiente de ajuste antes de usarlo en un despliegue real.
 - El control de acceso y el cifrado de las ordenes aun no estan implementados.
 
 ## Compilacion
@@ -257,4 +231,4 @@ pyinstaller --onefile --noconsole --name HermesCliente cliente/main.py
 ```
 
 Los archivos generados aparecen en `dist/`. Antes de distribuirlos, verifica
-la configuracion de red, las credenciales SMB y las reglas del firewall.
+la configuracion de red y las reglas del firewall.
