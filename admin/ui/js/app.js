@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const navBtnElements = document.querySelectorAll('.nav-btn');
     const viewElements = document.querySelectorAll('.view');
     const loader = document.getElementById('loader');
+    let gruposActuales = {};
 
     loader.classList.remove('active');
     switchView('dashboard');
@@ -45,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initMessagesForm() {
         const iconos = await window.hermesApi.getIconos();
         const select = document.getElementById('msg-icono');
-        select.innerHTML = '';
+        select.replaceChildren();
         iconos.forEach(ico => {
             const option = document.createElement('option');
             option.value = ico;
@@ -56,17 +57,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function renderClientsList() {
     const grupos = await window.hermesApi.getClientes();
+    gruposActuales = grupos;
     const listEl = document.getElementById('cli-lista');
     const countEl = document.getElementById('cli-count');
 
     const total = Object.values(grupos).reduce((s, arr) => s + arr.length, 0);
     countEl.textContent = total;
-    listEl.innerHTML = '';
+    listEl.replaceChildren();
 
     for (const [grupo, clientes] of Object.entries(grupos)) {
         const header = document.createElement('li');
         header.className = 'group-header';
-        header.innerHTML = `<strong>📁 ${grupo}</strong> <span>(${clientes.length})</span>`;
+        const nombreGrupo = document.createElement('strong');
+        nombreGrupo.textContent = `📁 ${grupo}`;
+        const cantidadGrupo = document.createElement('span');
+        cantidadGrupo.textContent = ` (${clientes.length})`;
+        header.append(nombreGrupo, cantidadGrupo);
         listEl.appendChild(header);
 
         if (clientes.length === 0) {
@@ -77,14 +83,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             clientes.forEach(({ nombre, ip }) => {
                 const li = document.createElement('li');
-                li.innerHTML = `
-                    <span>💻 <strong>${nombre}</strong> — ${ip}</span>
-                    <div style="display:flex; gap:6px;">
-                        <button class="btn" style="padding:5px 10px; font-size:12px;"
-                            onclick="editCliente('${grupo}', '${nombre}', '${ip}')">Editar</button>
-                        <button class="btn danger" style="padding:5px 10px; font-size:12px;"
-                            onclick="removeCliente('${grupo}', '${ip}')">Eliminar</button>
-                    </div>`;
+                const datosCliente = document.createElement('span');
+                datosCliente.textContent = `💻 ${nombre} — ${ip}`;
+                const acciones = document.createElement('div');
+                acciones.className = 'client-actions';
+                const editar = document.createElement('button');
+                editar.className = 'btn client-action';
+                editar.textContent = 'Editar';
+                editar.addEventListener('click', () => window.editCliente(grupo, nombre, ip));
+                const eliminar = document.createElement('button');
+                eliminar.className = 'btn danger client-action';
+                eliminar.textContent = 'Eliminar';
+                eliminar.addEventListener('click', () => window.removeCliente(grupo, ip));
+                acciones.append(editar, eliminar);
+                li.append(datosCliente, acciones);
                 listEl.appendChild(li);
             });
         }
@@ -121,29 +133,151 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         // ### WALLPAPER VIEW ###
-        const btnSelectImg = document.getElementById('btn-seleccionar-img');
-        const inputRuta = document.getElementById('wp-ruta');
+        const inputImagen = document.getElementById('wp-file');
+        const estadoSubida = document.getElementById('wp-upload-status');
+        const vistaPrevia = document.getElementById('wp-preview');
+        const selectorTipo = document.getElementById('wp-tipo');
         const btnAplicar = document.getElementById('btn-aplicar-fondo');
         const wpResult = document.getElementById('wp-resultados');
         const rbsWpTarget = document.getElementsByName('wp-target');
         const wpGrupoContainer = document.getElementById('wp-grupo-container');
         const wpUnoContainer = document.getElementById('wp-uno-container');
+        const wpGrupoSelect = document.getElementById('wp-grupo');
         const wpClienteSelect = document.getElementById('wp-cliente-select');
+        const limiteImagenBytes = 20 * 1024 * 1024;
+        let imageId = null;
+        let uploadingImage = false;
+        let sendingImage = false;
+        let previewUrl = null;
+
+        function destinoImagenValido() {
+            const destino = document.querySelector('input[name="wp-target"]:checked')?.value;
+            if (destino === 'grupo') return Boolean(wpGrupoSelect.value);
+            if (destino === 'equipo') return Boolean(wpClienteSelect.value);
+            return destino === 'todos';
+        }
+
+        function actualizarBotonEnviar() {
+            btnAplicar.disabled = !imageId
+                || uploadingImage
+                || sendingImage
+                || !destinoImagenValido();
+        }
+
+        function mostrarErrorEnvio(mensaje) {
+            wpResult.replaceChildren();
+            const error = document.createElement('p');
+            error.className = 'result-error';
+            error.textContent = mensaje;
+            wpResult.appendChild(error);
+            wpResult.classList.remove('hidden');
+        }
+
+        function mostrarResultadoEnvio(resultado) {
+            wpResult.replaceChildren();
+            if (resultado.total === 0) {
+                const aviso = document.createElement('p');
+                aviso.className = 'result-warning';
+                aviso.textContent = 'El destino no tiene equipos registrados; no se envió la imagen.';
+                wpResult.appendChild(aviso);
+                wpResult.classList.remove('hidden');
+                return;
+            }
+
+            const resumen = document.createElement('p');
+            if (resultado.fallidos === 0) {
+                resumen.textContent = `Envío exitoso: ${resultado.exitosos} de ${resultado.total} equipos.`;
+            } else if (resultado.exitosos === 0) {
+                resumen.className = 'result-error';
+                resumen.textContent = `Falló el envío a los ${resultado.total} equipos.`;
+            } else {
+                resumen.className = 'result-warning';
+                resumen.textContent = `Éxito parcial: ${resultado.exitosos} de ${resultado.total} equipos; ${resultado.fallidos} fallaron.`;
+            }
+            wpResult.appendChild(resumen);
+
+            if (resultado.fallos?.length) {
+                const tituloFallos = document.createElement('p');
+                tituloFallos.className = 'failure-title';
+                tituloFallos.textContent = 'Fallos por equipo:';
+                const listaFallos = document.createElement('ul');
+                resultado.fallos.forEach(({ ip, error }) => {
+                    const fallo = document.createElement('li');
+                    fallo.textContent = `${ip}: ${error}`;
+                    listaFallos.appendChild(fallo);
+                });
+                wpResult.append(tituloFallos, listaFallos);
+            }
+            wpResult.classList.remove('hidden');
+        }
+
+        inputImagen.addEventListener('change', async () => {
+            const archivo = inputImagen.files[0] || null;
+            imageId = null;
+            actualizarBotonEnviar();
+            wpResult.classList.add('hidden');
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+                previewUrl = null;
+            }
+            vistaPrevia.removeAttribute('src');
+            vistaPrevia.classList.add('hidden');
+
+            if (!archivo) {
+                estadoSubida.textContent = 'Selecciona una imagen (máximo 20 MB).';
+                return;
+            }
+            previewUrl = URL.createObjectURL(archivo);
+            vistaPrevia.src = previewUrl;
+            vistaPrevia.classList.remove('hidden');
+            if (archivo.size > limiteImagenBytes) {
+                estadoSubida.textContent = 'La imagen supera el máximo permitido de 20 MB';
+                inputImagen.value = '';
+                return;
+            }
+
+            uploadingImage = true;
+            inputImagen.disabled = true;
+            estadoSubida.textContent = 'Subiendo imagen...';
+            actualizarBotonEnviar();
+            try {
+                const resultado = await window.hermesApi.subirImagen(archivo);
+                if (!resultado.ok || !resultado.image_id) {
+                    estadoSubida.textContent = resultado.error || 'No se pudo subir la imagen.';
+                    return;
+                }
+                imageId = resultado.image_id;
+                estadoSubida.textContent = 'Imagen subida y lista para enviar.';
+            } catch {
+                estadoSubida.textContent = 'No se pudo conectar con el servidor. Comprueba que el admin esté activo e inténtalo de nuevo.';
+            } finally {
+                uploadingImage = false;
+                inputImagen.disabled = false;
+                inputImagen.value = '';
+                actualizarBotonEnviar();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        });
 
         // Mostrar/ocultar selectores según el radio elegido
         rbsWpTarget.forEach(rb => {
-            rb.addEventListener('change', async () => {
+            rb.addEventListener('change', () => {
                 wpGrupoContainer.classList.add('hidden');
                 wpUnoContainer.classList.add('hidden');
 
                 if (rb.value === 'grupo') {
                     wpGrupoContainer.classList.remove('hidden');
-                } else if (rb.value === 'uno') {
+                } else if (rb.value === 'equipo') {
                     wpUnoContainer.classList.remove('hidden');
-                    // Cargar lista de clientes en el select
-                    const grupos = await window.hermesApi.getClientes();
-                    wpClienteSelect.innerHTML = '<option value="">-- Selecciona un equipo --</option>';
-                    for (const [grupo, clientes] of Object.entries(grupos)) {
+                    wpClienteSelect.replaceChildren();
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = '-- Selecciona un equipo --';
+                    wpClienteSelect.appendChild(placeholder);
+                    for (const [grupo, clientes] of Object.entries(gruposActuales)) {
                         const optGroup = document.createElement('optgroup');
                         optGroup.label = grupo;
                         clientes.forEach(({ nombre, ip }) => {
@@ -155,50 +289,46 @@ document.addEventListener('DOMContentLoaded', async () => {
                         wpClienteSelect.appendChild(optGroup);
                     }
                 }
+                actualizarBotonEnviar();
             });
         });
 
-        btnSelectImg.addEventListener('click', async () => {
-            const res = await window.hermesApi.seleccionarImagen();
-            if (res && res.ok) {
-                inputRuta.value = res.ruta;
-                btnAplicar.disabled = false;
-            } else if (res && res.error && res.error !== 'Selección cancelada') {
-                alert('Error: ' + res.error);
-            }
-        });
+        wpGrupoSelect.addEventListener('change', actualizarBotonEnviar);
+        wpClienteSelect.addEventListener('change', actualizarBotonEnviar);
 
         btnAplicar.addEventListener('click', async () => {
-            const ruta = inputRuta.value;
-            if (!ruta) return;
+            if (!imageId || !destinoImagenValido() || sendingImage) return;
+            const destino = document.querySelector('input[name="wp-target"]:checked').value;
+            const solicitud = {
+                image_id: imageId,
+                tipo: selectorTipo.value,
+                destino,
+            };
+            if (destino === 'grupo') solicitud.grupo = wpGrupoSelect.value;
+            if (destino === 'equipo') solicitud.ip = wpClienteSelect.value;
 
-            const targetType = document.querySelector('input[name="wp-target"]:checked').value;
-
-            // Validar selección individual
-            if (targetType === 'uno' && !wpClienteSelect.value) {
-                alert('Selecciona un equipo de la lista');
-                return;
-            }
-
-            btnAplicar.disabled = true;
+            sendingImage = true;
             btnAplicar.textContent = 'Enviando...';
+            actualizarBotonEnviar();
             wpResult.classList.add('hidden');
-
-            let res;
-            if (targetType === 'todos') {
-                res = await window.hermesApi.cambiarFondo(ruta);
-            } else if (targetType === 'grupo') {
-                const grupo = document.getElementById('wp-grupo').value;
-                res = await window.hermesApi.cambiarFondoGrupo(grupo, ruta);
-            } else {
-                const ip = wpClienteSelect.value;
-                res = await window.hermesApi.cambiarFondoUno(ip, ruta);
+            try {
+                const resultado = await window.hermesApi.enviarImagen(solicitud);
+                if (resultado.error) {
+                    mostrarErrorEnvio(resultado.error);
+                    if (resultado.error.toLowerCase().includes('identificador de imagen')) {
+                        imageId = null;
+                        estadoSubida.textContent = 'El identificador expiró o ya no existe. Selecciona y sube la imagen de nuevo.';
+                    }
+                    return;
+                }
+                mostrarResultadoEnvio(resultado);
+            } catch {
+                mostrarErrorEnvio('No se pudo conectar con el servidor. Comprueba que el admin esté activo e inténtalo de nuevo.');
+            } finally {
+                sendingImage = false;
+                btnAplicar.textContent = 'Enviar';
+                actualizarBotonEnviar();
             }
-
-            wpResult.textContent = JSON.stringify(res, null, 2);
-            wpResult.classList.remove('hidden');
-            btnAplicar.textContent = 'Aplicar';
-            btnAplicar.disabled = false;
         });
 
          // ### MESSAGES VIEW ###
@@ -221,7 +351,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     msgIpContainer.classList.remove('hidden');
                     // Cargar lista de clientes en el select
                     const grupos = await window.hermesApi.getClientes();
-                    msgClienteSelect.innerHTML = '<option value="">-- Selecciona un equipo --</option>';
+                    msgClienteSelect.replaceChildren();
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = '-- Selecciona un equipo --';
+                    msgClienteSelect.appendChild(placeholder);
                     for (const [grupo, clientes] of Object.entries(grupos)) {
                         const optGroup = document.createElement('optgroup');
                         optGroup.label = grupo;
@@ -329,6 +463,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Eliminar grupo
         const btnRemoveGrupo = document.getElementById('btn-remove-grupo');
         const errorGrupo2 = document.getElementById('cli-grupo-error2');
+        const groupDeleteModal = document.getElementById('group-delete-modal');
+        const groupDeleteMessage = document.getElementById('group-delete-message');
+        const groupDeleteCancel = document.getElementById('group-delete-cancel');
+        const groupDeleteConfirm = document.getElementById('group-delete-confirm');
+        let grupoPendienteEliminar = null;
+        let focoAntesDeModal = null;
+
+        function cerrarModalEliminarGrupo() {
+            groupDeleteModal.classList.add('hidden');
+            grupoPendienteEliminar = null;
+            if (focoAntesDeModal?.isConnected) focoAntesDeModal.focus();
+        }
+
+        function abrirModalEliminarGrupo(nombre, cantidad) {
+            grupoPendienteEliminar = nombre;
+            focoAntesDeModal = document.activeElement;
+            groupDeleteMessage.textContent = cantidad > 0
+                ? `El grupo ${nombre} tiene ${cantidad} ${cantidad === 1 ? 'equipo; se eliminará' : 'equipos; se eliminarán'} junto con él. Esta acción no se puede deshacer.`
+                : `El grupo ${nombre} tiene 0 equipos. No hay equipos que eliminar. Esta acción no se puede deshacer.`;
+            groupDeleteModal.classList.remove('hidden');
+            groupDeleteCancel.focus();
+        }
 
         btnRemoveGrupo.addEventListener('click', async () => {
             const nombre = document.getElementById('cli-grupo-eliminar').value;
@@ -340,19 +496,44 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            const clientesEnGrupo = (await window.hermesApi.getClientes())[nombre] || [];
-            const aviso = clientesEnGrupo.length > 0
-                ? `⚠️ El grupo "${nombre}" tiene ${clientesEnGrupo.length} cliente(s). ¿Eliminar igualmente?`
-                : `¿Eliminar el grupo "${nombre}"?`;
+            const equipos = gruposActuales[nombre] || [];
+            abrirModalEliminarGrupo(nombre, equipos.length);
+        });
 
-            if (!confirm(aviso)) return;
-
-            const res = await window.hermesApi.removeGrupo(nombre);
-            if (res.ok) {
+        groupDeleteCancel.addEventListener('click', cerrarModalEliminarGrupo);
+        groupDeleteModal.addEventListener('click', (event) => {
+            if (event.target === groupDeleteModal) cerrarModalEliminarGrupo();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !groupDeleteModal.classList.contains('hidden')) {
+                cerrarModalEliminarGrupo();
+            }
+        });
+        groupDeleteConfirm.addEventListener('click', async () => {
+            if (!grupoPendienteEliminar) return;
+            const nombre = grupoPendienteEliminar;
+            groupDeleteConfirm.disabled = true;
+            groupDeleteCancel.disabled = true;
+            groupDeleteConfirm.textContent = 'Eliminando...';
+            try {
+                const resultado = await window.hermesApi.removeGrupo(nombre);
+                if (!resultado.ok) {
+                    errorGrupo2.textContent = resultado.error || 'No se pudo eliminar el grupo.';
+                    errorGrupo2.classList.remove('hidden');
+                    cerrarModalEliminarGrupo();
+                    return;
+                }
+                cerrarModalEliminarGrupo();
                 await renderClientsList();
-            } else {
-                errorGrupo2.textContent = res.error;
+                await initDashboard();
+            } catch {
+                errorGrupo2.textContent = 'No se pudo conectar con el servidor. Comprueba que el admin esté activo e inténtalo de nuevo.';
                 errorGrupo2.classList.remove('hidden');
+                cerrarModalEliminarGrupo();
+            } finally {
+                groupDeleteConfirm.disabled = false;
+                groupDeleteCancel.disabled = false;
+                groupDeleteConfirm.textContent = 'Eliminar';
             }
         });
     }
@@ -365,9 +546,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sel = document.getElementById(id);
         if (!sel) return;
         const current = sel.value;
-        sel.innerHTML = id === 'cli-grupo-eliminar'
-            ? '<option value="">-- Selecciona un grupo --</option>'
-            : '';
+        sel.replaceChildren();
+        if (id === 'cli-grupo-eliminar') {
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Selecciona un grupo --';
+            sel.appendChild(placeholder);
+        }
         grupos.forEach(g => {
             const opt = document.createElement('option');
             opt.value = g;

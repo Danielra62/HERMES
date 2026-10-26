@@ -38,10 +38,9 @@ firewall de los equipos cliente.
 ```
 
 El flujo antiguo del administrador copia la imagen seleccionada a la carpeta
-compartida como `fondo.jpeg` y envia `CAMBIAR_FONDO` por v1. Los endpoints
-backend v2 comprimen las imagenes en el admin y envian sus bytes directamente
-al listener del cliente por TCP; la interfaz web todavia usa el flujo antiguo
-hasta integrar estos endpoints en la tarjeta 1.4.
+compartida como `fondo.jpeg` y envia `CAMBIAR_FONDO` por v1. La vista Fondos
+actual envia imagenes y fondos mediante TCP v2; los endpoints y el mecanismo
+SMB antiguos permanecen disponibles hasta su retiro en la tarjeta 1.6.
 
 ## Estructura
 
@@ -213,9 +212,9 @@ para enviar el `image_id` resultante. Este ultimo recibe `tipo` (`fondo` o
 `imagen`) y `destino` (`todos`, `grupo` con `grupo`, o `equipo` con `ip`).
 Los JPEG comprimidos se guardan en `HERMES_STORAGE_DIR`, que por defecto es
 `admin/storage`; configura esa ruta como volumen persistente en Docker. El
-endpoint existente `POST /api/fondo/subir` y los endpoints v1 de fondo siguen
-disponibles hasta la tarjeta 1.6. Estos endpoints nuevos aun no estan
-conectados a la interfaz web.
+La vista Fondos de la interfaz usa estos endpoints. El endpoint existente
+`POST /api/fondo/subir` y los endpoints v1 de fondo siguen disponibles hasta
+la tarjeta 1.6.
 
 ```powershell
 python -m scripts.pruebas.prueba_envio_imagen_v2 --tipo imagen --archivo "C:\ruta\foto.jpg"

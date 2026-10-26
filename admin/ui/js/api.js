@@ -1,10 +1,13 @@
 /** HERMES - cliente HTTP para la API Flask. */
 
-let archivoWallpaper = null;
-
 async function requestJSON(url, options = {}) {
     const response = await fetch(url, options);
-    const resultado = await response.json();
+    let resultado;
+    try {
+        resultado = await response.json();
+    } catch {
+        resultado = {};
+    }
     if (!response.ok && !resultado.error) {
         resultado.error = `Error HTTP ${response.status}`;
     }
@@ -19,33 +22,13 @@ function jsonOptions(method, body) {
     };
 }
 
-async function uploadAndApply(endpoint, ruta, extra = {}) {
-    if (!archivoWallpaper || ruta !== archivoWallpaper.name) {
-        return {
-            publicacion: { ok: false, error: 'Selecciona una imagen antes de continuar' },
-            envio: null,
-        };
-    }
-
+async function uploadImage(file) {
     const formData = new FormData();
-    formData.append('imagen', archivoWallpaper);
-    const subida = await requestJSON('/api/fondo/subir', {
+    formData.append('imagen', file);
+    return requestJSON('/api/imagenes/subir', {
         method: 'POST',
         body: formData,
     });
-    if (!subida.ok) {
-        return { publicacion: subida, envio: null };
-    }
-
-    const resultado = await requestJSON(endpoint, jsonOptions('POST', {
-        ...extra,
-        upload_id: subida.upload_id,
-    }));
-    if (resultado.publicacion?.ok) {
-        archivoWallpaper = null;
-        document.getElementById('wp-file').value = '';
-    }
-    return resultado;
 }
 
 const api = {
@@ -73,35 +56,10 @@ const api = {
         { method: 'DELETE' }
     ),
 
-    // Fondos
-    seleccionarImagen: () => new Promise((resolve) => {
-        const input = document.getElementById('wp-file');
-        const limpiarEventos = () => {
-            input.removeEventListener('change', alCambiar);
-            input.removeEventListener('cancel', alCancelar);
-        };
-        const alCambiar = () => {
-            limpiarEventos();
-            archivoWallpaper = input.files[0] || null;
-            resolve(archivoWallpaper
-                ? { ok: true, ruta: archivoWallpaper.name }
-                : { ok: false, error: 'Selección cancelada' });
-        };
-        const alCancelar = () => {
-            limpiarEventos();
-            resolve({ ok: false, error: 'Selección cancelada' });
-        };
-        input.value = '';
-        input.addEventListener('change', alCambiar, { once: true });
-        input.addEventListener('cancel', alCancelar, { once: true });
-        input.click();
-    }),
-    cambiarFondo: (ruta) => uploadAndApply('/api/fondo', ruta),
-    cambiarFondoGrupo: (grupo, ruta) => uploadAndApply(
-        '/api/fondo/grupo', ruta, { grupo }
-    ),
-    cambiarFondoUno: (ip, ruta) => uploadAndApply(
-        '/api/fondo/cliente', ruta, { ip }
+    // Imágenes v2
+    subirImagen: (file) => uploadImage(file),
+    enviarImagen: (body) => requestJSON(
+        '/api/imagenes/enviar', jsonOptions('POST', body)
     ),
 
     // Mensajes
