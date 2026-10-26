@@ -1,3 +1,5 @@
+import time
+
 from cliente.core.listener import iniciar_listener
 from cliente.core.auth import conectar_recurso
 

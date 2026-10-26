@@ -10,6 +10,7 @@ from enum import IntEnum
 VERSION_PROTOCOLO = 1
 FORMATO_HEADER = "!BBII"
 TAMANO_HEADER = struct.calcsize(FORMATO_HEADER)
+MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 
 
 class TipoOrden(IntEnum):
@@ -69,6 +70,11 @@ def recibir_orden(sock: socket.socket) -> tuple[int, int, bytes]:
     version, tipo_orden, order_id, longitud_payload = desempacar_header(datos_header)
     if version != VERSION_PROTOCOLO:
         raise ValueError(f"Version de protocolo no soportada: {version}")
+    if longitud_payload > MAX_PAYLOAD_BYTES:
+        raise ValueError(
+            f"El payload excede el maximo de {MAX_PAYLOAD_BYTES} bytes: "
+            f"{longitud_payload}"
+        )
     payload = recv_exact(sock, longitud_payload)
     return tipo_orden, order_id, payload
 

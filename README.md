@@ -17,6 +17,8 @@ Actualmente estan implementadas estas funciones:
 - Creacion y eliminacion de grupos.
 - Cambio de fondo para todos los clientes, un grupo o un equipo.
 - Mensajes emergentes para todos los clientes, un grupo o un equipo.
+- Recepcion v2 de imagenes y fondos en el cliente; el envio desde el admin
+  para esos tipos aun no esta integrado.
 - Persistencia de clientes y grupos en MySQL/MariaDB.
 - Envio paralelo de ordenes TCP y resumen de equipos exitosos y fallidos.
 
@@ -38,9 +40,10 @@ firewall de los equipos cliente.
 [Servidor SMB: \\172.16.20.196\Wallpapers]
 ```
 
-El administrador copia la imagen seleccionada a la carpeta compartida con el
-nombre `fondo.jpeg` y despues envia la orden `CAMBIAR_FONDO`. Cada cliente
-construye la ruta de esa imagen y la aplica con `SystemParametersInfoW`.
+Actualmente, el flujo del administrador para cambiar el fondo copia la imagen
+seleccionada a la carpeta compartida como `fondo.jpeg` y envia
+`CAMBIAR_FONDO` por v1. El listener del cliente tambien acepta fondos e
+imagenes por TCP v2; el admin aun no ha migrado el envio de esos tipos.
 
 ## Estructura
 
@@ -177,10 +180,10 @@ el framing v2 descrito a continuacion.
 
 Iconos disponibles: `info`, `pregunta`, `alerta` y `error`.
 
-## Protocolo TCP v2 (en desarrollo)
+## Protocolo TCP v2
 
-El modulo compartido `shared/protocol.py` define framing binario para una
-version futura del protocolo. El header tiene tamaño fijo de 10 bytes y usa
+El modulo compartido `shared/protocol.py` define el framing binario. El header
+tiene tamaño fijo de 10 bytes y usa
 el formato `!BBII` (orden de bytes de red):
 
 | Campo | Tamaño en bytes | Tipo | Descripcion |
@@ -195,10 +198,24 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
 
-El envio de mensajes `MENSAJE` ya usa este framing, y el listener distingue
-v1 de v2 inspeccionando el primer byte de cada conexion. `CAMBIAR_FONDO`
-continua usando el protocolo v1 de texto plano. La migracion de los comandos
-restantes corresponde a tarjetas posteriores.
+El listener distingue v1 de v2 inspeccionando el primer byte de cada conexion
+y recibe completamente el payload v2 con `recv_exact`. `MENSAJE` viaja como
+JSON UTF-8. `IMAGEN` se valida y se guarda temporalmente; despues del ACK se
+muestra en una ventana y el archivo temporal se elimina al cerrarla.
+`CAMBIAR_FONDO` v2 se guarda temporalmente, se convierte a
+`%LOCALAPPDATA%\Temp\HermesTemp\fondo_actual.bmp` y se aplica con
+`SystemParametersInfoW`; el ACK se envia solo si se aplico. El BMP se conserva
+porque Windows mantiene su ruta. Los payloads `hermes_imagen_*.bin` de mas de
+siete dias se limpian al arrancar el listener y al recibir ordenes v2.
+
+El administrador sigue enviando `CAMBIAR_FONDO` por v1; su envio por v2 aun
+no esta integrado en la interfaz. Para probar la recepcion del cliente con una
+imagen real desde la raiz del proyecto:
+
+```powershell
+python -m scripts.pruebas.prueba_envio_imagen_v2 --tipo imagen --archivo "C:\ruta\foto.jpg"
+python -m scripts.pruebas.prueba_envio_imagen_v2 --tipo fondo --archivo "C:\ruta\foto.jpg"
+```
 
 ## Pruebas rapidas
 
@@ -218,8 +235,8 @@ compartida configurada es accesible y el cliente es Windows.
 - El cliente usa APIs de Windows (`ctypes.windll`) y no es portable a Linux o
   macOS.
 - La copia del fondo depende de SMB, credenciales validas y permisos de red.
-- El cliente no ofrece una interfaz grafica; se ejecuta en segundo plano desde
-  una terminal o mediante un ejecutable.
+- El cliente se ejecuta en segundo plano, pero muestra ventanas tkinter para
+  imagenes recibidas por v2.
 - El listener no registra clientes automaticamente: el administrador debe
   tener sus IPs en `clientes.json`.
 - El flujo de reintento de conexion del cliente cuando falla `net use` esta
