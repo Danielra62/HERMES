@@ -58,9 +58,9 @@ y tareas; no necesariamente indican el orden global de ejecución.
 - [x] **2.1 — Recibir heartbeats en el admin.** Listener v2 multihilo en el
   puerto dedicado `5006`; actualiza estado y última conexión de clientes
   registrados, ignora IPs desconocidas sin crear registros y confirma con ACK.
-- [ ] **2.2 — Enviar un ping desde el cliente al arrancar.**
-  - Avisar al admin que el cliente está disponible.
-  - Un fallo o ausencia del admin no debe impedir que arranque el listener.
+- [x] **2.2 — Enviar un ping desde el cliente al arrancar.** El cliente notifica
+  al admin configurado por `HERMES_ADMIN_HOST` en un hilo daemon con timeout
+  corto; la ausencia del admin no impide que arranque el listener TCP.
 - [ ] **2.3 — Iniciar el cliente mediante el Programador de tareas de Windows.**
   - Ejecutarlo al iniciar sesión del usuario, no como tarea sin sesión
     interactiva, para que las ventanas puedan mostrarse.

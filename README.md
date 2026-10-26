@@ -113,6 +113,19 @@ TIMEOUT = 5
 PUERTO_HEARTBEAT = 5006
 ```
 
+En cada cliente, configura `HERMES_ADMIN_HOST` con la IP o el nombre DNS del
+equipo que ejecuta el admin. Por ejemplo, en PowerShell:
+
+```powershell
+$env:HERMES_ADMIN_HOST = "192.168.1.10"
+python -m cliente.main
+```
+
+Para persistirlo para futuras terminales de Windows, usa
+`setx HERMES_ADMIN_HOST "192.168.1.10"` y abre una terminal nueva. Si no está
+configurado o el admin no responde, el cliente registra una advertencia y
+arranca igualmente el listener de órdenes en el puerto `5005`.
+
 Los clientes y grupos se administran desde la vista **Clientes** y se guardan
 en la base de datos `hermes`.
 
@@ -179,12 +192,14 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
 
-El listener del administrador recibe `HEARTBEAT` (`4`) con payload vacío en el
+Al arrancar, el cliente envía un `HEARTBEAT` (`4`) con payload vacío al admin
+configurado en `HERMES_ADMIN_HOST`. El intento corre en un hilo daemon con un
+timeout de dos segundos y no impide que inicie el listener de órdenes.
+El listener del administrador recibe el heartbeat en el
 puerto `5006`. La IP de origen se usa para marcar como disponible solo un
 cliente que ya esté registrado; el admin responde `OK` incluso si la IP no
 existe en la base de datos, sin crear un registro. El listener se inicia en un
-hilo daemon junto con la aplicación Flask. El cliente aún no envía heartbeats
-automáticamente; eso corresponde a la tarea 2.2.
+hilo daemon junto con la aplicación Flask.
 
 Con el admin activo, se puede enviar un heartbeat de prueba desde la misma PC:
 
