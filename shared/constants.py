@@ -5,6 +5,7 @@
 
 # ── Red ───────────────────────────────────────────────────────
 PUERTO = 5005                        # Puerto TCP para comunicación admin ↔ cliente
+PUERTO_HEARTBEAT = 5006              # Puerto TCP de escucha de heartbeats en el admin
 TIMEOUT = 5                          # Segundos antes de considerar un cliente inaccesible
 
 # ── Comandos (protocolo interno) ─────────────────────────────

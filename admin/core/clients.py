@@ -72,6 +72,45 @@ def obtener_clientes() -> list[str]:
             conexion.close()
 
 
+def actualizar_disponibilidad_cliente(
+    ip: str,
+    estado: str = "disponible",
+) -> dict:
+    """Actualiza el estado y la última conexión solo de un cliente registrado."""
+    conexion = None
+    cursor = None
+    try:
+        conexion = _conexion()
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM clientes WHERE ip = %s", (ip,))
+        if cursor.fetchone() is None:
+            conexion.rollback()
+            return {"ok": True, "actualizado": False}
+
+        cursor.execute(
+            """
+            UPDATE clientes
+            SET estado = %s, ultima_conexion = NOW()
+            WHERE ip = %s
+            """,
+            (estado, ip),
+        )
+        if cursor.rowcount == 0:
+            conexion.rollback()
+            return {"ok": True, "actualizado": False}
+        conexion.commit()
+        return {"ok": True, "actualizado": True}
+    except Error as exc:
+        if conexion is not None:
+            conexion.rollback()
+        return _error(f"No se pudo actualizar la disponibilidad de {ip}: {exc}")
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conexion is not None and conexion.is_connected():
+            conexion.close()
+
+
 def total_clientes() -> int:
     """Retorna el total de clientes; devuelve cero si la lectura falla."""
     conexion = None

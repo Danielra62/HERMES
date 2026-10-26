@@ -55,11 +55,9 @@ y tareas; no necesariamente indican el orden global de ejecución.
 
 ## Épica 2 — Disponibilidad de clientes
 
-- [ ] **2.1 — Recibir heartbeats en el admin.**
-  - Definir si se usa un puerto dedicado o un tipo de orden en el protocolo v2.
-  - Escuchar pings y marcar como disponible al cliente conocido, registrando la
-    hora de última conexión.
-  - Ignorar IPs no registradas; no crear clientes automáticamente.
+- [x] **2.1 — Recibir heartbeats en el admin.** Listener v2 multihilo en el
+  puerto dedicado `5006`; actualiza estado y última conexión de clientes
+  registrados, ignora IPs desconocidas sin crear registros y confirma con ACK.
 - [ ] **2.2 — Enviar un ping desde el cliente al arrancar.**
   - Avisar al admin que el cliente está disponible.
   - Un fallo o ausencia del admin no debe impedir que arranque el listener.

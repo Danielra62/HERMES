@@ -29,6 +29,7 @@ firewall de los equipos cliente.
 
 ```text
 [Administrador] -- TCP v2, puerto 5005 --> [Clientes Windows]
+[Administrador] <-- HEARTBEAT v2, puerto 5006 -- [Clientes Windows]
 ```
 
 Los mensajes, imagenes emergentes y cambios de fondo se envian por TCP. Los
@@ -46,6 +47,7 @@ HERMES/
 |   |-- app.py               # Endpoints HTTP del frontend
 |   |-- core/
 |   |   |-- clients.py       # Acceso MySQL a clientes y grupos
+|   |   |-- heartbeat_listener.py # Listener TCP v2 para disponibilidad
 |   |   |-- image_processing.py # Validacion, compresion y almacenamiento
 |   |   |-- messaging.py     # Construccion de mensajes
 |   |   |-- network.py       # Envio TCP paralelo
@@ -64,6 +66,7 @@ HERMES/
 |       `-- wallpaper.py     # Fondo de Windows
 |
 |-- shared/constants.py     # Puerto, comandos y version
+|-- scripts/pruebas/         # Pruebas manuales de protocolo y red
 |-- clientes.json            # Clientes y grupos registrados
 |-- requirements.txt
 `-- README.md
@@ -77,6 +80,7 @@ HERMES/
 - Red local con conectividad entre administrador y clientes.
 - MySQL/MariaDB disponible y configurado en `.env`.
 - Puerto TCP `5005` permitido en los clientes.
+- Puerto TCP `5006` permitido en el administrador para recibir heartbeats.
 
 El administrador puede iniciarse en otros sistemas para probar la interfaz;
 las conexiones TCP a los clientes siguen siendo reales.
@@ -106,6 +110,7 @@ Revisa `shared/constants.py` antes de usar el sistema en la red real:
 ```python
 PUERTO = 5005
 TIMEOUT = 5
+PUERTO_HEARTBEAT = 5006
 ```
 
 Los clientes y grupos se administran desde la vista **Clientes** y se guardan
@@ -146,10 +151,8 @@ iniciarse en cada PC que vaya a recibir ordenes.
 ## Protocolo TCP
 
 El administrador envia texto UTF-8. El cliente responde `OK` despues de
-procesar una orden.
+procesar una orden v1. El protocolo binario v2 se describe abajo.
 
-| Orden | Formato | Accion |
-|---|---|---|
 El formato textual `MENSAJE|titulo|texto|icono` se conserva en el cliente para
 compatibilidad con clientes anteriores, pero el administrador actual envia los
 mensajes mediante el framing v2 descrito a continuacion. Los cambios de fondo
@@ -175,6 +178,25 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 (`3`) y `HEARTBEAT` (`4`). El payload se transporta como bytes; cada tipo de
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
+
+El listener del administrador recibe `HEARTBEAT` (`4`) con payload vacío en el
+puerto `5006`. La IP de origen se usa para marcar como disponible solo un
+cliente que ya esté registrado; el admin responde `OK` incluso si la IP no
+existe en la base de datos, sin crear un registro. El listener se inicia en un
+hilo daemon junto con la aplicación Flask. El cliente aún no envía heartbeats
+automáticamente; eso corresponde a la tarea 2.2.
+
+Con el admin activo, se puede enviar un heartbeat de prueba desde la misma PC:
+
+```powershell
+python -m scripts.pruebas.prueba_envio_heartbeat
+```
+
+Desde otra PC, indica la IP del servidor admin:
+
+```powershell
+python -m scripts.pruebas.prueba_envio_heartbeat --host 192.168.1.10
+```
 
 El listener recibe completamente el payload v2 con `recv_exact`. `MENSAJE`
 viaja como JSON UTF-8. `IMAGEN` se valida y se guarda temporalmente; despues del ACK se
