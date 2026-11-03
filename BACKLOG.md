@@ -58,18 +58,18 @@ y tareas; no necesariamente indican el orden global de ejecución.
 - [x] **2.1 — Recibir heartbeats en el admin.** Listener v2 multihilo en el
   puerto dedicado `5006`; actualiza estado y última conexión de clientes
   registrados, ignora IPs desconocidas sin crear registros y confirma con ACK.
-- [x] **2.2 — Enviar un ping desde el cliente al arrancar.** El cliente notifica
-  al admin configurado por `HERMES_ADMIN_HOST` en un hilo daemon con timeout
-  corto; la ausencia del admin no impide que arranque el listener TCP.
+- [x] **2.2 — Enviar un ping desde el cliente al arrancar.** El cliente aprende
+  la IP del admin al recibir una orden/sondeo en TCP y luego envía heartbeats
+  periódicos sin configuración manual; el fallo no bloquea el listener.
 - [ ] **2.3 — Iniciar el cliente mediante el Programador de tareas de Windows.**
   - Ejecutarlo al iniciar sesión del usuario, no como tarea sin sesión
     interactiva, para que las ventanas puedan mostrarse.
   - Probar el arranque automático después de reiniciar Windows.
   - Depende también de 1.6: el cliente debe funcionar sin carpeta de red.
-- [ ] **2.4 — Sondear clientes no disponibles periódicamente.**
-  - Cada 30 minutos, comprobar los clientes marcados como no disponibles.
-  - Actualizar el estado de los que respondan y evitar conflictos concurrentes
-    con el listener de heartbeats.
+- [x] **2.4 — Sondear clientes no disponibles periódicamente.** El admin hace
+  un sondeo inmediato al arrancar y lo repite cada 30 minutos; marca disponibles
+  a los que responden y usa actualizaciones SQL atómicas concurrentes con los
+  heartbeats entrantes.
 
 ## Épica 3 — Cola de órdenes pendientes
 

@@ -18,6 +18,7 @@ from shared.constants import TIMEOUT
 from shared.protocol import VERSION_PROTOCOLO, TipoOrden, recibir_orden
 
 from cliente.core.wallpaper import aplicar_fondo
+from cliente.core.heartbeat import registrar_ip_admin
 from cliente.core.messaging import mostrar_mensaje
 
 HOST = "0.0.0.0"
@@ -310,14 +311,25 @@ def _asegurar_interfaz_lista(timeout: float = 2) -> bool:
         )
 
 
-def _manejar_conexion(conn):
+def _manejar_conexion(conn, direccion):
     try:
         primer_byte = conn.recv(1, socket.MSG_PEEK)
         if primer_byte == bytes([VERSION_PROTOCOLO]):
             tipo_orden, order_id, payload = recibir_orden(conn)
             print(f"[ORDEN v2] id={order_id}")
+            if tipo_orden in (
+                TipoOrden.HEARTBEAT,
+                TipoOrden.IMAGEN,
+                TipoOrden.CAMBIAR_FONDO,
+                TipoOrden.MENSAJE,
+            ):
+                registrar_ip_admin(direccion[0])
             limpiar_temporales()
-            if tipo_orden in (TipoOrden.IMAGEN, TipoOrden.CAMBIAR_FONDO):
+            if tipo_orden == TipoOrden.HEARTBEAT:
+                if payload:
+                    raise ValueError("El payload de HEARTBEAT debe estar vacío")
+                conn.sendall(b"OK")
+            elif tipo_orden in (TipoOrden.IMAGEN, TipoOrden.CAMBIAR_FONDO):
                 ruta_imagen = _guardar_imagen(order_id, payload)
                 if tipo_orden == TipoOrden.IMAGEN:
                     entregado_a_interfaz = False
@@ -376,6 +388,7 @@ def _manejar_conexion(conn):
         else:
             data = conn.recv(1024).decode().strip()
             if data:
+                registrar_ip_admin(direccion[0])
                 manejar_comando(data)
                 conn.sendall("OK".encode("utf-8"))
     except Exception as e:
@@ -400,6 +413,6 @@ def iniciar_listener():
 
         threading.Thread(
             target=_manejar_conexion,
-            args=(conn,),
+            args=(conn, addr),
             daemon=True,
         ).start()

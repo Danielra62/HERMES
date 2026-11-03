@@ -51,6 +51,7 @@ HERMES/
 |   |   |-- image_processing.py # Validacion, compresion y almacenamiento
 |   |   |-- messaging.py     # Construccion de mensajes
 |   |   |-- network.py       # Envio TCP paralelo
+|   |   `-- scheduler.py     # Sondeo periódico de clientes no disponibles
 |   `-- ui/
 |       |-- index.html
 |       |-- css/styles.css
@@ -61,7 +62,8 @@ HERMES/
 |-- cliente/
 |   |-- main.py              # Arranque del cliente
 |   `-- core/
-|   |-- listener.py      # Servidor TCP
+|       |-- heartbeat.py    # Heartbeats periódicos al admin aprendido
+|       |-- listener.py     # Servidor TCP
 |       |-- messaging.py     # MessageBox de Windows
 |       `-- wallpaper.py     # Fondo de Windows
 |
@@ -113,18 +115,9 @@ TIMEOUT = 5
 PUERTO_HEARTBEAT = 5006
 ```
 
-En cada cliente, configura `HERMES_ADMIN_HOST` con la IP o el nombre DNS del
-equipo que ejecuta el admin. Por ejemplo, en PowerShell:
-
-```powershell
-$env:HERMES_ADMIN_HOST = "192.168.1.10"
-python -m cliente.main
-```
-
-Para persistirlo para futuras terminales de Windows, usa
-`setx HERMES_ADMIN_HOST "192.168.1.10"` y abre una terminal nueva. Si no está
-configurado o el admin no responde, el cliente registra una advertencia y
-arranca igualmente el listener de órdenes en el puerto `5005`.
+No es necesario configurar la dirección del admin en cada cliente. Cuando el
+cliente recibe una orden o sondeo en `5005`, aprende la IP de origen y empieza
+a enviar heartbeats a esa IP en el puerto `5006`.
 
 Los clientes y grupos se administran desde la vista **Clientes** y se guardan
 en la base de datos `hermes`.
@@ -192,14 +185,18 @@ Los tipos definidos son `MENSAJE` (`1`), `CAMBIAR_FONDO` (`2`), `IMAGEN`
 orden determina si quien lo recibe lo interpreta como JSON UTF-8 o como bytes
 crudos.
 
-Al arrancar, el cliente envía un `HEARTBEAT` (`4`) con payload vacío al admin
-configurado en `HERMES_ADMIN_HOST`. El intento corre en un hilo daemon con un
-timeout de dos segundos y no impide que inicie el listener de órdenes.
-El listener del administrador recibe el heartbeat en el
-puerto `5006`. La IP de origen se usa para marcar como disponible solo un
+El listener del administrador recibe `HEARTBEAT` (`4`) con payload vacío en
+el puerto `5006`. La IP de origen se usa para marcar como disponible solo un
 cliente que ya esté registrado; el admin responde `OK` incluso si la IP no
 existe en la base de datos, sin crear un registro. El listener se inicia en un
 hilo daemon junto con la aplicación Flask.
+
+Al arrancar, el admin sondea inmediatamente a los clientes cuyo estado es
+`no_disponible`, y repite el sondeo cada 30 minutos. La verificación es un
+`HEARTBEAT` v2 enviado al puerto de órdenes `5005`; el cliente aprende la IP
+remota del admin, confirma la verificación y comienza a enviar heartbeats
+periódicos al puerto `5006`. El cliente escucha y responde a la verificación
+aunque el admin no esté disponible para recibir su heartbeat posterior.
 
 Con el admin activo, se puede enviar un heartbeat de prueba desde la misma PC:
 
@@ -243,6 +240,25 @@ Comprobar imports y sintaxis desde la raiz:
 python -c "import admin.main; import cliente.main; print('entry points: OK')"
 python -m compileall -q admin cliente shared
 ```
+
+## Migrar MariaDB a SQLite
+
+El script `scripts/migrar_a_sqlite.py` clona las tablas base, columnas, claves
+foraneas, índices y filas del esquema MariaDB configurado en `.env` a
+`hermes.db` en la raíz del proyecto. La migración conserva los IDs y los
+contadores `AUTO_INCREMENT`; traduce los tipos a afinidades compatibles con
+SQLite y valida las relaciones antes de publicar el archivo.
+
+Desde la raíz y con el entorno virtual activo:
+
+```powershell
+python -m scripts.migrar_a_sqlite
+```
+
+El script no sobrescribe un `hermes.db` existente. La base generada está
+excluida de Git porque contiene datos locales de clientes. Esta operación crea
+una copia para migración/inspección; no cambia el backend del admin, que sigue
+conectándose a MySQL/MariaDB.
 
 Para una prueba local de red, registra `127.0.0.1` como cliente y ejecuta el
 cliente en otra terminal. El cliente Windows puede recibir el fondo por TCP v2

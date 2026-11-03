@@ -3,6 +3,7 @@ from flask import Flask, render_template
 from admin.app import api
 from admin.core.image_processing import MAX_UPLOAD_BYTES
 from admin.core.heartbeat_listener import iniciar_listener_heartbeat
+from admin.core.scheduler import iniciar_scheduler
 
 
 app = Flask(
@@ -27,6 +28,7 @@ def archivo_demasiado_grande(_error):
 
 def main():
     iniciar_listener_heartbeat()
+    iniciar_scheduler()
     app.run(host="0.0.0.0", port=8080)
 
 
