@@ -99,7 +99,11 @@ def _ddl_columna(columna: dict[str, Any]) -> str:
         }:
             definicion += " DEFAULT CURRENT_TIMESTAMP"
         else:
-            definicion += f" DEFAULT {_literal_sql(default)}"
+            valor_default = default
+            if isinstance(valor_default, str) and len(valor_default) >= 2:
+                if valor_default[0] == valor_default[-1] == "'":
+                    valor_default = valor_default[1:-1].replace("''", "'")
+            definicion += f" DEFAULT {_literal_sql(valor_default)}"
 
     if tipo_mysql == "enum":
         valores = _valores_enum(columna["COLUMN_TYPE"])

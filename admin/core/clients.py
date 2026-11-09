@@ -245,15 +245,19 @@ def agregar_cliente(grupo: str, nombre: str, ip: str) -> dict:
             return {"ok": False, "error": f"{ip} ya está en {grupo}"}
 
         cursor.execute(
-            "INSERT INTO clientes (nombre, ip, grupo_id) VALUES (?, ?, ?)",
+            """
+            INSERT INTO clientes (nombre, ip, grupo_id, estado)
+            VALUES (?, ?, ?, 'no_disponible')
+            """,
             (nombre, ip, grupo_id),
         )
         conexion.commit()
         return {"ok": True}
-    except ERRORES_INTEGRIDAD:
+    except ERRORES_INTEGRIDAD as exc:
         if conexion is not None:
             conexion.rollback()
-        return {"ok": False, "error": f"{ip} ya está en {grupo}"}
+        mensaje = str(exc) if str(exc) else f"{ip} ya está registrada"
+        return {"ok": False, "error": mensaje}
     except ERRORES_BD as exc:
         if conexion is not None:
             conexion.rollback()
