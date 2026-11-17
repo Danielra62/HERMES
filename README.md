@@ -274,14 +274,32 @@ sin depender de recursos compartidos de archivos.
   tener sus IPs en `clientes.json`.
 - El control de acceso y el cifrado de las ordenes aun no estan implementados.
 
-## Compilacion
+## Instalador del cliente Windows
 
-PyInstaller puede generar los ejecutables desde la raiz:
+El cliente se empaqueta como aplicacion Windows independiente con PyInstaller;
+no requiere Python instalado en los equipos destino. PyInstaller es una
+herramienta de desarrollo y no se agrega a los requisitos de ejecucion del
+proyecto. Inno Setup genera el instalador con desinstalador.
+
+En la PC de desarrollo, instala Inno Setup 6 y PyInstaller fuera del entorno
+virtual del proyecto. Luego, desde PowerShell en la raiz:
 
 ```powershell
-pyinstaller --onefile --windowed --name HermesAdmin admin/main.py
-pyinstaller --onefile --noconsole --name HermesCliente cliente/main.py
+.\installer\compilar_instalador.ps1
 ```
 
-Los archivos generados aparecen en `dist/`. Antes de distribuirlos, verifica
-la configuracion de red y las reglas del firewall.
+El instalador final se genera en `dist\instalador`. Durante la instalacion,
+`HermesRegistro.exe` solicita un nombre, permite elegir una IPv4, pide las
+credenciales SMB en campos protegidos, no las guarda y cierra la conexión
+temporal al terminar. Registra el equipo en
+`\\172.16.20.196\compartirV\pa Hermes\inventario_hermes.json`. El inventario
+usa la forma `{"instalaciones": [...]}`; reinstalar una IP actualiza su entrada
+y no elimina los demas equipos. Si el JSON existe pero no se puede leer o su
+estructura no es valida, el archivo no se reemplaza y la instalacion muestra
+que el registro quedó pendiente.
+
+El instalador instala el cliente bajo `Program Files`, ofrece inicio
+automatico al iniciar sesion para todos los usuarios y agrega un acceso directo
+para reintentar el registro del inventario. La desinstalacion elimina el
+programa y ese inicio automatico, pero no borra el inventario compartido. La
+regla de firewall TCP 5005 debe configurarse conforme a las politicas de TI.
