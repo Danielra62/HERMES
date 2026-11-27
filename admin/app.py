@@ -2,12 +2,13 @@
 
 import ipaddress
 import uuid
+from collections.abc import Callable
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 
-from admin.core import clients, image_processing, messaging, network
+from admin.core import clients, image_processing, messaging, order_delivery
 from shared.constants import ICONOS
-from shared.protocol import TipoOrden
 
 
 api = Blueprint("api", __name__, url_prefix="/api")
@@ -15,6 +16,19 @@ api = Blueprint("api", __name__, url_prefix="/api")
 
 def _datos_json() -> dict:
     return request.get_json(silent=True) or {}
+
+
+def _ejecutar_envio(accion: Callable[[], Any]):
+    try:
+        return accion()
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except (RuntimeError, OSError) as exc:
+        print(f"[API][ERROR] No se pudo enviar la orden: {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    except clients.ERRORES_BD as exc:
+        print(f"[API][ERROR] No se pudo persistir la orden: {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @api.get("/clientes")
@@ -85,18 +99,22 @@ def mensaje_todos():
             "fallidos": 0,
             "fallos": [{"ip": "local", "error": "Campos vacíos"}],
         })
-    return jsonify(messaging.enviar_mensaje_todos(titulo, texto, icono))
+    return _ejecutar_envio(
+        lambda: jsonify(messaging.enviar_mensaje_todos(titulo, texto, icono))
+    )
 
 
 @api.post("/mensajes/cliente")
 def mensaje_uno():
     datos = _datos_json()
-    return jsonify(messaging.enviar_mensaje_uno(
-        datos.get("ip", ""),
-        datos.get("titulo", ""),
-        datos.get("texto", ""),
-        datos.get("icono", "info"),
-    ))
+    return _ejecutar_envio(
+        lambda: jsonify(messaging.enviar_mensaje_uno(
+            datos.get("ip", ""),
+            datos.get("titulo", ""),
+            datos.get("texto", ""),
+            datos.get("icono", "info"),
+        ))
+    )
 
 
 @api.post("/mensajes/grupo")
@@ -111,12 +129,14 @@ def mensaje_grupo():
             "fallidos": 0,
             "fallos": [{"ip": "local", "error": "Campos vacíos"}],
         })
-    return jsonify(messaging.enviar_mensaje_grupo(
-        datos.get("grupo", ""),
-        titulo,
-        texto,
-        datos.get("icono", "info"),
-    ))
+    return _ejecutar_envio(
+        lambda: jsonify(messaging.enviar_mensaje_grupo(
+            datos.get("grupo", ""),
+            titulo,
+            texto,
+            datos.get("icono", "info"),
+        ))
+    )
 
 
 @api.post("/imagenes/subir")
@@ -187,29 +207,31 @@ def enviar_imagen_v2():
             "error": "El identificador de imagen no existe",
         }), 404
 
-    try:
-        payload = ruta_imagen.read_bytes()
-    except OSError as exc:
-        return jsonify({
-            "ok": False,
-            "error": f"No se pudo leer la imagen almacenada: {exc}",
-        }), 500
-
-    if destino == "todos":
-        ips = clients.obtener_clientes()
-    elif destino == "grupo":
+    if destino == "grupo":
         grupos = clients.obtener_grupos()
         if grupo not in grupos:
             return jsonify({
                 "ok": False,
                 "error": f"El grupo '{grupo}' no existe",
             }), 404
-        ips = [cliente["ip"] for cliente in grupos[grupo]]
-    else:
-        ips = [ip.strip()]
 
-    tipo_orden = (
-        TipoOrden.CAMBIAR_FONDO if tipo == "fondo" else TipoOrden.IMAGEN
-    )
-    resultados = network.enviar_payload_v2_a_lista(tipo_orden, payload, ips)
-    return jsonify(network.resumen(resultados))
+    def enviar():
+        resultado = order_delivery.crear_y_entregar(
+            tipo="CAMBIAR_FONDO" if tipo == "fondo" else "IMAGEN",
+            payload={"tipo": tipo},
+            destino_tipo=destino,
+            destino_etiqueta=(
+                grupo
+                if destino == "grupo"
+                else ip.strip() if destino == "equipo" else None
+            ),
+            image_id=image_id,
+        )
+        if destino == "equipo" and resultado["destinatarios"] == 0:
+            return jsonify({
+                "ok": False,
+                "error": f"El equipo {ip.strip()} no está registrado",
+            }), 404
+        return jsonify(order_delivery.respuesta_masiva(resultado))
+
+    return _ejecutar_envio(enviar)

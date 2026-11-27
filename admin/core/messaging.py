@@ -1,24 +1,16 @@
 # =============================================================
 #  HERMES — admin/core/messaging.py
-#  Construcción y envío v2 de mensajes emergentes a los clientes
+#  Construcción y envío persistente de mensajes emergentes
 # =============================================================
 
-import json
-
 from shared.constants import ICONOS
-from shared.protocol import TipoOrden
-from admin.core.network import (
-    enviar_v2_a_lista,
-    enviar_v2_a_todos,
-    enviar_v2_a_uno,
-    resumen,
-)
+from admin.core import order_delivery
 
 
 def _construir_payload(titulo: str, texto: str, icono: str) -> dict:
     """
-    Valida los parámetros y construye el payload JSON UTF-8 del mensaje.
-    Retorna {"ok": True, "payload": bytes} o {"ok": False, "error": "..."}.
+    Valida los parámetros y construye el objeto JSON del mensaje.
+    Retorna {"ok": True, "payload": dict} o {"ok": False, "error": "..."}.
     """
     titulo = titulo.strip()
     texto  = texto.strip()
@@ -34,10 +26,7 @@ def _construir_payload(titulo: str, texto: str, icono: str) -> dict:
         iconos_validos = ", ".join(ICONOS.keys())
         return {"ok": False, "error": f"Ícono inválido. Opciones: {iconos_validos}"}
 
-    payload = json.dumps(
-        {"titulo": titulo, "texto": texto, "icono": icono},
-        ensure_ascii=False,
-    ).encode("utf-8")
+    payload = {"titulo": titulo, "texto": texto, "icono": icono}
     return {"ok": True, "payload": payload}
 
 
@@ -50,11 +39,13 @@ def enviar_mensaje_todos(titulo: str, texto: str, icono: str = "info") -> dict:
     if not construccion["ok"]:
         return construccion
 
-    resultados = enviar_v2_a_todos(
-        TipoOrden.MENSAJE,
-        construccion["payload"],
+    resultado = order_delivery.crear_y_entregar(
+        tipo="MENSAJE",
+        payload=construccion["payload"],
+        destino_tipo="todos",
+        destino_etiqueta=None,
     )
-    return resumen(resultados)
+    return order_delivery.respuesta_masiva(resultado)
 
 
 def enviar_mensaje_uno(ip: str, titulo: str, texto: str, icono: str = "info") -> dict:
@@ -66,22 +57,27 @@ def enviar_mensaje_uno(ip: str, titulo: str, texto: str, icono: str = "info") ->
     if not construccion["ok"]:
         return construccion
 
-    return enviar_v2_a_uno(ip, TipoOrden.MENSAJE, construccion["payload"])
+    resultado = order_delivery.crear_y_entregar(
+        tipo="MENSAJE",
+        payload=construccion["payload"],
+        destino_tipo="equipo",
+        destino_etiqueta=ip.strip(),
+    )
+    return order_delivery.respuesta_individual(resultado)
 
 def enviar_mensaje_grupo(grupo: str, titulo: str, texto: str, icono: str = "info") -> dict:
     """
     Envía un mensaje emergente a todos los clientes de un grupo específico.
     Retorna el resumen de resultados.
     """
-    from admin.core.clients import obtener_grupos
     construccion = _construir_payload(titulo, texto, icono)
     if not construccion["ok"]:
         return construccion
 
-    ips = [c["ip"] for c in obtener_grupos().get(grupo, [])]
-    resultados = enviar_v2_a_lista(
-        TipoOrden.MENSAJE,
-        construccion["payload"],
-        ips,
+    resultado = order_delivery.crear_y_entregar(
+        tipo="MENSAJE",
+        payload=construccion["payload"],
+        destino_tipo="grupo",
+        destino_etiqueta=grupo,
     )
-    return resumen(resultados)
+    return order_delivery.respuesta_masiva(resultado)

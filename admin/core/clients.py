@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,10 +24,20 @@ except ImportError:
 load_dotenv()
 
 RAIZ_PROYECTO = Path(__file__).resolve().parents[2]
-RUTA_SQLITE = RAIZ_PROYECTO / "hermes.db"
+
+
+def _directorio_datos() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "data"
+    return RAIZ_PROYECTO
+
+
+RUTA_SQLITE = _directorio_datos() / "hermes.db"
 
 
 def _usar_mysql() -> bool:
+    if getattr(sys, "frozen", False):
+        return False
     return os.getenv("HERMES_USE_MYSQL", "false").strip().lower() in {
         "1",
         "true",

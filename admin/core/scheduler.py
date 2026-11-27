@@ -37,6 +37,9 @@ def _sondear_cliente(ip: str) -> bool:
         return False
 
     print(f"[SCHEDULER] Cliente disponible: {ip}")
+    from admin.core.order_delivery import notificar_cliente_disponible
+
+    notificar_cliente_disponible(ip)
     return True
 
 

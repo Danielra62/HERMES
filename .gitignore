@@ -30,6 +30,7 @@ Thumbs.db
 *.log
 *.tmp
 hermes.db
+hermes.db.pre-orders-*.bak
 
 # Imágenes comprimidas subidas al administrador (montar como volumen en Docker)
 admin/storage/

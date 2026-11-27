@@ -185,8 +185,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const resumen = document.createElement('p');
-            if (resultado.fallidos === 0) {
+            if (resultado.fallidos === 0 && resultado.encoladas === 0) {
                 resumen.textContent = `Envío exitoso: ${resultado.exitosos} de ${resultado.total} equipos.`;
+            } else if (resultado.encoladas > 0) {
+                resumen.className = 'result-warning';
+                resumen.textContent = `${resultado.exitosos} de ${resultado.total} equipos confirmados; ${resultado.encoladas} en cola para reintento.`;
+                if (resultado.inciertas > 0) {
+                    resumen.textContent += ` ${resultado.inciertas} con resultado incierto.`;
+                }
+            } else if (resultado.inciertas > 0) {
+                resumen.className = 'result-warning';
+                resumen.textContent = `${resultado.inciertas} entregas tienen resultado incierto; no se reintentarán automáticamente.`;
             } else if (resultado.exitosos === 0) {
                 resumen.className = 'result-error';
                 resumen.textContent = `Falló el envío a los ${resultado.total} equipos.`;
@@ -199,7 +208,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (resultado.fallos?.length) {
                 const tituloFallos = document.createElement('p');
                 tituloFallos.className = 'failure-title';
-                tituloFallos.textContent = 'Fallos por equipo:';
+                tituloFallos.textContent = resultado.encoladas > 0
+                    ? 'Detalle de intentos:'
+                    : 'Fallos por equipo:';
                 const listaFallos = document.createElement('ul');
                 resultado.fallos.forEach(({ ip, error }) => {
                     const fallo = document.createElement('li');

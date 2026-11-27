@@ -18,7 +18,10 @@ Actualmente estan implementadas estas funciones:
 - Cambio de fondo para todos los clientes, un grupo o un equipo.
 - Mensajes emergentes para todos los clientes, un grupo o un equipo.
 - Envio de imagenes y fondos por TCP v2 desde la interfaz web del admin.
-- Persistencia de clientes y grupos en MySQL/MariaDB.
+- Persistencia de clientes y grupos en SQLite por defecto; MySQL/MariaDB sigue
+  disponible como alternativa.
+- Órdenes persistidas por destinatario con reintentos cuando un cliente vuelve
+  a estar disponible.
 - Envio paralelo de ordenes TCP y resumen de equipos exitosos y fallidos.
 
 No hay autenticacion entre el administrador y los clientes. La aplicacion
@@ -46,7 +49,7 @@ HERMES/
 |   |-- main.py              # Servidor Flask y archivos estaticos
 |   |-- app.py               # Endpoints HTTP del frontend
 |   |-- core/
-|   |   |-- clients.py       # Acceso MySQL a clientes y grupos
+|   |   |-- clients.py       # Acceso SQLite/MySQL a clientes y grupos
 |   |   |-- heartbeat_listener.py # Listener TCP v2 para disponibilidad
 |   |   |-- image_processing.py # Validacion, compresion y almacenamiento
 |   |   |-- messaging.py     # Construccion de mensajes
@@ -69,7 +72,7 @@ HERMES/
 |
 |-- shared/constants.py     # Puerto, comandos y version
 |-- scripts/pruebas/         # Pruebas manuales de protocolo y red
-|-- clientes.json            # Clientes y grupos registrados
+|-- hermes.db                # Base de datos SQLite local
 |-- requirements.txt
 `-- README.md
 ```
@@ -77,10 +80,10 @@ HERMES/
 ## Requisitos
 
 - Windows 10 u 11 para ejecutar el cliente.
-- Python 3.10 o posterior.
+- Python 3.12.x.
 - Python instalado y un entorno virtual activo.
 - Red local con conectividad entre administrador y clientes.
-- MySQL/MariaDB disponible y configurado en `.env`.
+- SQLite se usa por defecto. Para MySQL/MariaDB, configurar el backend en `.env`.
 - Puerto TCP `5005` permitido en los clientes.
 - Puerto TCP `5006` permitido en el administrador para recibir heartbeats.
 
@@ -120,7 +123,7 @@ cliente recibe una orden o sondeo en `5005`, aprende la IP de origen y empieza
 a enviar heartbeats a esa IP en el puerto `5006`.
 
 Los clientes y grupos se administran desde la vista **Clientes** y se guardan
-en la base de datos `hermes`.
+en `hermes.db` por defecto. El backend MySQL/MariaDB es opcional.
 
 ## Ejecucion
 
@@ -135,6 +138,33 @@ python -m admin.main
 
 Luego abre `http://localhost:8080` en el navegador. Flask escucha en
 `0.0.0.0:8080` para permitir el acceso desde otros equipos o contenedores.
+
+### Administrador portable para Windows
+
+Con PyInstaller instalado globalmente y las dependencias del proyecto en `venv`,
+ejecuta desde la raíz:
+
+```powershell
+.\scripts\build_admin_portable.ps1
+```
+
+El script crea `HermesAdmin-portable` en el Escritorio o actualiza su programa
+si ya existe, conservando `data\hermes.db`, `data\storage` e inventario. La
+carpeta incluye un ejecutable PyInstaller `onedir`, un acceso directo con icono,
+el código fuente de `admin`, `shared` y `scripts`, y una copia SQLite segura
+de `hermes.db`.
+El ejecutable usa `data\hermes.db` y `data\storage` junto a la aplicación; no
+necesita Python instalado. La base incluida conserva los registros existentes
+y `inventario_hermes.json`, si está en el Escritorio, se copia como referencia
+pero no se importa automáticamente. No se incluye `.env`.
+
+El acceso directo inicia la consola minimizada y abre automáticamente el
+navegador predeterminado cuando Flask responde; si no se abre, visita
+`http://127.0.0.1:8080`. Para acceder desde otros equipos, permite en el
+firewall TCP `8080` (interfaz web) y `5006`
+(heartbeats entrantes); el admin envía órdenes a los clientes por TCP `5005`.
+La cola portable utiliza SQLite, aunque el código fuente conserve el backend
+MySQL/MariaDB opcional.
 
 La interfaz tiene estas vistas:
 
@@ -257,8 +287,36 @@ python -m scripts.migrar_a_sqlite
 
 El script no sobrescribe un `hermes.db` existente. La base generada está
 excluida de Git porque contiene datos locales de clientes. Esta operación crea
-una copia para migración/inspección; no cambia el backend del admin, que sigue
-conectándose a MySQL/MariaDB.
+una copia para migración/inspección. El admin usa SQLite por defecto; MySQL/
+MariaDB sigue disponible como opción para clientes y grupos mediante
+`HERMES_USE_MYSQL=true`.
+
+## Preparar el esquema de órdenes pendientes
+
+Después de respaldar la base, migra el esquema SQLite existente desde la raíz:
+
+```powershell
+python -m scripts.migrar_cola_ordenes
+```
+
+La migración conserva un respaldo `hermes.db.pre-orders-<UTC>.bak`, reemplaza
+la tabla legacy vacía `ordenes_pendientes` por `ordenes`, `entregas` e
+`intentos`, y valida las claves foráneas. Si la tabla legacy contiene filas o
+el esquema no está en el estado esperado, la migración se detiene sin borrarlas.
+Este paso prepara el esquema que utiliza la cola de órdenes. Los endpoints
+persisten cada orden antes del primer intento; los fallos de conexión se
+reintentan en segundo plano y heartbeat/sondeo adelantan el envío. El worker
+se inicia con `python -m admin.main`. Todos los destinatarios se intentan en
+paralelo durante la petición; los reintentos se procesan en segundo plano, en
+lotes de hasta 32 conexiones simultáneas. La política actual conserva MENSAJE e
+IMAGEN con resultado incierto sin reintento automático; esos tipos y los fondos
+sí reintentan fallos ocurridos antes de conectar, hasta seis intentos. Los
+fondos también pueden reintentar un resultado incierto porque aplicar el mismo
+fondo es idempotente. El TTL es de 7 días para fondos y 8 horas para MENSAJE e
+IMAGEN. La cola solo está soportada con SQLite y un único proceso admin;
+MySQL/MariaDB aún no tiene migración para este esquema. Con MySQL el admin
+puede gestionar clientes/grupos, pero el worker queda deshabilitado y los
+endpoints de órdenes informan que requieren SQLite.
 
 Para una prueba local de red, registra `127.0.0.1` como cliente y ejecuta el
 cliente en otra terminal. El cliente Windows puede recibir el fondo por TCP v2
@@ -271,7 +329,7 @@ sin depender de recursos compartidos de archivos.
 - El cliente se ejecuta en segundo plano, pero muestra ventanas tkinter para
   imagenes recibidas por v2.
 - El listener no registra clientes automaticamente: el administrador debe
-  tener sus IPs en `clientes.json`.
+  tener sus IPs registradas en `hermes.db`.
 - El control de acceso y el cifrado de las ordenes aun no estan implementados.
 
 ## Instalador del cliente Windows
@@ -297,6 +355,12 @@ usa la forma `{"instalaciones": [...]}`; reinstalar una IP actualiza su entrada
 y no elimina los demas equipos. Si el JSON existe pero no se puede leer o su
 estructura no es valida, el archivo no se reemplaza y la instalacion muestra
 que el registro quedó pendiente.
+
+Al compilar una nueva version, se conserva el mismo `AppId` y se incrementa
+`VERSION`. Ejecutar el nuevo instalador sobre una instalacion existente
+actualiza los archivos en su carpeta previa y conserva la selección de inicio
+automatico. El registro con `HermesRegistro.exe` vuelve a aparecer durante la
+actualizacion; se puede cancelar sin desinstalar el cliente actualizado.
 
 El instalador instala el cliente bajo `Program Files`, ofrece inicio
 automatico al iniciar sesion para todos los usuarios y agrega un acceso directo

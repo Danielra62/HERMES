@@ -6,9 +6,17 @@
 import secrets
 import socket
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 from admin.core.clients import obtener_clientes
 from shared.constants import PUERTO, TIMEOUT
-from shared.protocol import TipoOrden, enviar_orden, recv_exact
+from shared.protocol import (
+    VERSION_PROTOCOLO,
+    TipoOrden,
+    empacar_header,
+    recv_exact,
+)
 
 
 _order_id = secrets.randbits(32)
@@ -49,20 +57,84 @@ def _enviar_a_uno(ip: str, orden: str) -> dict:
 
 def _enviar_v2_a_uno(ip: str, tipo_orden: int, payload: bytes) -> dict:
     """Envía una orden con framing v2 a una sola PC."""
+    return enviar_orden_v2_a_uno(ip, tipo_orden, payload)
+
+
+def enviar_orden_v2_a_uno(
+    ip: str,
+    tipo_orden: int,
+    payload: bytes,
+    *,
+    timeout_total: float = 10,
+) -> dict:
+    """Envía v2 con límite total y distingue fallos inciertos tras conectar."""
+    if timeout_total <= 0:
+        raise ValueError("timeout_total debe ser mayor que cero")
+
+    conectado = False
+    deadline = time.monotonic() + timeout_total
+
+    def aplicar_timeout_restante(sock: socket.socket) -> None:
+        restante = deadline - time.monotonic()
+        if restante <= 0:
+            raise socket.timeout("Se agotó el límite total de envío")
+        sock.settimeout(min(TIMEOUT, restante))
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(TIMEOUT)
+            aplicar_timeout_restante(s)
             s.connect((ip, PUERTO))
-            enviar_orden(s, tipo_orden, _siguiente_order_id(), payload)
-            respuesta = s.recv(1024).decode("utf-8")
-            return {"ip": ip, "ok": True, "respuesta": respuesta}
+            conectado = True
+            aplicar_timeout_restante(s)
+            order_id = _siguiente_order_id()
+            s.sendall(
+                empacar_header(
+                    VERSION_PROTOCOLO,
+                    tipo_orden,
+                    order_id,
+                    len(payload),
+                )
+            )
+            if payload:
+                aplicar_timeout_restante(s)
+                s.sendall(payload)
+            aplicar_timeout_restante(s)
+            respuesta = recv_exact(s, 2)
+            if respuesta != b"OK":
+                return {
+                    "ip": ip,
+                    "ok": False,
+                    "conectado": True,
+                    "error": f"ACK inesperado: {respuesta!r}",
+                }
+            return {
+                "ip": ip,
+                "ok": True,
+                "conectado": True,
+                "respuesta": "OK",
+            }
 
     except socket.timeout:
-        return {"ip": ip, "ok": False, "error": "TIMEOUT — PC apagada o inaccesible"}
+        return {
+            "ip": ip,
+            "ok": False,
+            "conectado": conectado,
+            "error": "TIMEOUT — PC apagada o inaccesible",
+        }
     except ConnectionRefusedError:
-        return {"ip": ip, "ok": False, "error": "RECHAZADO — cliente no activo"}
+        return {
+            "ip": ip,
+            "ok": False,
+            "conectado": conectado,
+            "error": "RECHAZADO — cliente no activo",
+        }
     except OSError as e:
-        return {"ip": ip, "ok": False, "error": str(e)}
+        return {
+            "ip": ip,
+            "ok": False,
+            "conectado": conectado,
+            "error": str(e),
+        }
 
 
 def _enviar_payload_v2_a_uno(
@@ -71,25 +143,7 @@ def _enviar_payload_v2_a_uno(
     payload: bytes,
 ) -> dict:
     """Envía una orden binaria y considera éxito únicamente el ACK `OK`."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(TIMEOUT)
-            s.connect((ip, PUERTO))
-            enviar_orden(s, tipo_orden, _siguiente_order_id(), payload)
-            respuesta = recv_exact(s, 2)
-            if respuesta != b"OK":
-                return {
-                    "ip": ip,
-                    "ok": False,
-                    "error": f"ACK inesperado: {respuesta!r}",
-                }
-            return {"ip": ip, "ok": True, "respuesta": "OK"}
-    except socket.timeout:
-        return {"ip": ip, "ok": False, "error": "TIMEOUT — PC apagada o inaccesible"}
-    except ConnectionRefusedError:
-        return {"ip": ip, "ok": False, "error": "RECHAZADO — cliente no activo"}
-    except OSError as e:
-        return {"ip": ip, "ok": False, "error": str(e)}
+    return enviar_orden_v2_a_uno(ip, tipo_orden, payload)
 
 
 def enviar_payload_v2_a_lista(
@@ -103,20 +157,13 @@ def enviar_payload_v2_a_lista(
     if not ips:
         return []
 
-    resultados = [None] * len(ips)
-
-    def tarea(index: int, ip: str) -> None:
-        resultados[index] = _enviar_payload_v2_a_uno(ip, tipo_orden, payload)
-
-    hilos = [
-        threading.Thread(target=tarea, args=(index, ip), daemon=True)
-        for index, ip in enumerate(ips)
-    ]
-    for hilo in hilos:
-        hilo.start()
-    for hilo in hilos:
-        hilo.join()
-    return resultados
+    with ThreadPoolExecutor(max_workers=min(len(ips), 32)) as executor:
+        return list(
+            executor.map(
+                lambda ip: _enviar_payload_v2_a_uno(ip, tipo_orden, payload),
+                ips,
+            )
+        )
 
 
 def _enviar_v2_a_lista(tipo_orden: int, payload: bytes, ips: list[str]) -> list[dict]:

@@ -1,6 +1,7 @@
 """Validacion, compresion y almacenamiento de imagenes subidas al admin."""
 
 import os
+import sys
 from io import BytesIO
 from pathlib import Path
 
@@ -19,6 +20,14 @@ load_dotenv()
 
 def directorio_almacenamiento() -> Path:
     """Devuelve el almacenamiento configurado o admin/storage por defecto."""
+    if getattr(sys, "frozen", False):
+        raiz = Path(sys.executable).resolve().parent
+        valor = os.getenv("HERMES_STORAGE_DIR", "").strip()
+        if not valor:
+            return raiz / "data" / "storage"
+        ruta = Path(valor)
+        return ruta if ruta.is_absolute() else raiz / ruta
+
     valor = os.getenv("HERMES_STORAGE_DIR", "").strip() or "admin/storage"
     ruta = Path(valor)
     if not ruta.is_absolute():

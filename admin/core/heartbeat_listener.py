@@ -29,11 +29,16 @@ def _atender_conexion(conn: socket.socket, direccion: tuple[str, int]) -> None:
             print(f"[HEARTBEAT][ERROR] {ip}: {resultado['error']}")
             conn.sendall(b"ER")
             return
-        if not resultado["actualizado"]:
+        actualizado = resultado["actualizado"]
+        if not actualizado:
             print(f"[HEARTBEAT] IP no registrada; se ignora: {ip}")
         else:
             print(f"[HEARTBEAT] Cliente disponible: {ip} (order_id={order_id})")
         conn.sendall(b"OK")
+        if actualizado:
+            from admin.core.order_delivery import notificar_cliente_disponible
+
+            notificar_cliente_disponible(ip)
     except (ConnectionError, OSError, ValueError, KeyError) as exc:
         print(f"[HEARTBEAT][ERROR] Conexión de {ip}: {exc}")
         try:

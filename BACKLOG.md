@@ -1,16 +1,17 @@
 # HERMES — Backlog del proyecto
 
 Backlog consolidado a partir del tablero **Plan para migrar HERMES** y del estado
-conocido del repositorio al 26 de octubre de 2026. Los números identifican épicas
-y tareas; no necesariamente indican el orden global de ejecución.
+conocido del repositorio al 17 de noviembre de 2026. Los números identifican
+épicas y tareas; no necesariamente indican el orden global de ejecución.
 
 ## Estado general
 
 - **Completado:** base de datos, protocolo TCP v2, envío de mensajes, envío de
   imágenes y fondos por TCP, e interfaz web unificada.
 - **Completado:** consolidar el transporte de fondos e imágenes en TCP v2.
-- **Pendiente:** disponibilidad/heartbeat, cola de órdenes pendientes,
-  empaquetado del admin con Docker y pruebas integrales del despliegue.
+- **Completado:** disponibilidad, heartbeat y sondeo periódico de clientes.
+- **Pendiente:** cola persistente de órdenes, validación del instalador en el
+  laboratorio, empaquetado del admin con Docker y pruebas integrales.
 
 ### Convenciones
 
@@ -61,11 +62,12 @@ y tareas; no necesariamente indican el orden global de ejecución.
 - [x] **2.2 — Enviar un ping desde el cliente al arrancar.** El cliente aprende
   la IP del admin al recibir una orden/sondeo en TCP y luego envía heartbeats
   periódicos sin configuración manual; el fallo no bloquea el listener.
-- [ ] **2.3 — Iniciar el cliente mediante el Programador de tareas de Windows.**
-  - Ejecutarlo al iniciar sesión del usuario, no como tarea sin sesión
-    interactiva, para que las ventanas puedan mostrarse.
-  - Probar el arranque automático después de reiniciar Windows.
-  - Depende también de 1.6: el cliente debe funcionar sin carpeta de red.
+- [~] **2.3 — Iniciar automáticamente el cliente desde el instalador Windows.**
+  - El instalador ofrece el inicio al iniciar sesión para todos los usuarios,
+    manteniendo el cliente en una sesión interactiva para mostrar ventanas.
+  - Validar en un equipo de laboratorio la instalación, el inicio tras cerrar
+    sesión/reiniciar y la eliminación del acceso de inicio al desinstalar.
+  - No requiere el Programador de tareas de Windows.
 - [x] **2.4 — Sondear clientes no disponibles periódicamente.** El admin hace
   un sondeo inmediato al arrancar y lo repite cada 30 minutos; marca disponibles
   a los que responden y usa actualizaciones SQL atómicas concurrentes con los
@@ -73,18 +75,59 @@ y tareas; no necesariamente indican el orden global de ejecución.
 
 ## Épica 3 — Cola de órdenes pendientes
 
-- [ ] **3.1 — Registrar órdenes fallidas.**
-  - Si falla el envío a un cliente, guardar en `ordenes_pendientes` el
-    destinatario, tipo, datos necesarios para reconstruir la orden y estado.
-  - Usar los estados `pendiente`, `enviada` y `fallida`.
-- [ ] **3.2 — Reenviar órdenes al recuperar disponibilidad.**
-  - Cuando un cliente vuelva a estar disponible, buscar órdenes pendientes
-    dirigidas a él o a sus grupos y reenviarlas por TCP.
-  - Marcar como enviada si tiene éxito; si falla, conservarla como pendiente.
-  - Evitar que dos ejecuciones reenvíen la misma orden simultáneamente.
+- [x] **3.1 — Migrar el esquema y registrar órdenes persistentes por destinatario.**
+  - En la revisión del 17-11-2026, `ordenes_pendientes` no tenía filas ni
+    código consumidor, su FK `cliente_id` apuntaba a `clientes_migracion`
+    (inexistente) y su valor por defecto de `estado` no coincidía con el
+    `CHECK`. Se respaldó y migró la base SQLite; se conservaron los clientes y
+    grupos y se verificó la integridad referencial.
+  - Guardar la orden y una entrega por cada cliente destinatario antes del
+    primer intento. Congelar los destinatarios de grupo/todos al crearla.
+  - Conservar los datos necesarios para reconstruir la orden. Para imágenes y
+    fondos, referenciar el `image_id` y conservar el archivo en `admin/storage`
+    mientras existan entregas activas.
+  - Usar estados de entrega `pendiente`, `enviando`, `confirmada`, `fallida`,
+    `expirada` y `cancelada`; registrar los intentos de red por separado.
+  - Implementados el comando de migración SQLite y el repositorio transaccional
+    que crea una orden y sus entregas con los destinatarios congelados. La
+    escritura quedó conectada al flujo de entrega en 3.2.
+- [x] **3.2 — Entregar y reintentar órdenes al recuperar disponibilidad.**
+  - Hacer un intento inmediato con límite total inicial propuesto de 10 s; los
+    reintentos posteriores se ejecutan en segundo plano. La API conserva el
+    patrón de respuesta actual y añade conteos de órdenes en cola e inciertas.
+  - Activar el drenaje de la cola cuando heartbeat o sondeo confirmen un
+    cliente; también recuperar y barrer pendientes al arrancar/periódicamente.
+  - Reclamar entregas atómicamente, sin mantener transacciones abiertas durante
+    operaciones de red, y recuperar entregas que queden `enviando` al reiniciar.
+  - Un fallo antes de conectar es reintentable. Cualquier fallo después de
+    conectar o iniciar el envío, incluido un error de `sendall`, es incierto.
+    No reintentar automáticamente MENSAJE/IMAGEN inciertos; CAMBIAR_FONDO puede
+    reintentarse porque aplicar el mismo fondo es idempotente.
+  - El `order_id` enviado por TCP debe caber en el entero sin signo de 32 bits
+    del header. Usar un ID distinto por intento en esta primera versión; no
+    prometer entrega exactamente una vez ni deduplicación del lado cliente.
+  - Valores iniciales: TTL de MENSAJE/IMAGEN 8 h,
+    CAMBIAR_FONDO 7 días; reintentos tras 15 s, 1 min, 5 min, 15 min y 1 h,
+    máximo 6 intentos; nueva orden de fondo cancela fondos anteriores
+    pendientes del mismo equipo.
+  - Las claves foráneas eliminan las entregas al borrar su cliente o su grupo.
+    La advertencia de órdenes afectadas antes de borrar se incluye en 3.3.
+  - Implementados el intento inmediato acotado a 10 s por equipo, el worker de
+    reintentos, el drenaje por heartbeat/sondeo y la recuperación de envíos
+    interrumpidos al arrancar. Todos los destinatarios se intentan en paralelo
+    durante la petición; los intentos posteriores se procesan en lotes con un
+    máximo de 32 conexiones simultáneas. Los intentos tienen IDs TCP distintos
+    y las respuestas incluyen `encoladas` e `inciertas`. El worker se inicia
+    desde `python -m admin.main`; la cola requiere SQLite y un solo proceso
+    admin.
 - [ ] **3.3 — Administrar órdenes pendientes desde la interfaz.**
-  - Mostrar destinatario, tipo y fecha de creación.
-  - Permitir eliminar una orden que ya no deba enviarse.
+  - Mostrar destinatario, tipo, fecha, estado, intentos y último error.
+  - Permitir cancelar/eliminar una pendiente y reintentar manualmente una
+    entrega fallida o incierta, advirtiendo que puede producirse un duplicado.
+  - Advertir cuántas entregas pendientes serán eliminadas al borrar un
+    cliente o un grupo.
+  - Distinguir “confirmada por el cliente” de “vista por el usuario”; el ACK
+    actual no garantiza que un popup haya sido visto.
 
 ## Épica 4 — Dockerización del admin
 
@@ -93,12 +136,12 @@ y tareas; no necesariamente indican el orden global de ejecución.
 - [ ] **4.2 — Crear un Dockerfile para el admin.**
   - Instalar las dependencias y ejecutar la aplicación web en el contenedor.
   - Construir la imagen y comprobar que el admin responde.
-- [ ] **4.3 — Orquestar admin, MySQL/MariaDB y phpMyAdmin.**
-  - Definir los servicios en `docker-compose.yml` y conectarlos en una red
-    interna.
-  - Configurar el admin para conectar por nombre de servicio.
-  - Persistir los datos de la base de datos y publicar los puertos necesarios.
-  - No incluir un servidor compartido de archivos.
+- [ ] **4.3 — Desplegar el admin Dockerizado con almacenamiento persistente.**
+  - Configurar el backend SQLite actual y persistir `hermes.db` en un volumen
+    Docker; persistir también `admin/storage`.
+  - No incluir MySQL/MariaDB, phpMyAdmin ni un servidor compartido de archivos
+    salvo que una decisión posterior cambie el backend.
+  - Publicar los puertos necesarios y documentar las reglas de firewall.
 - [ ] **4.4 — Documentar el despliegue.**
   - Incluir puertos y reglas de firewall, variables de entorno y pasos para
     desplegar en un servidor desde cero.
@@ -125,6 +168,10 @@ y tareas; no necesariamente indican el orden global de ejecución.
 - El admin se ejecuta como aplicación web; el cliente es un proceso Windows y no
   se incluye en Docker.
 - El transporte final de imágenes y fondos es TCP v2.
-- La base de datos es MySQL/MariaDB. `ordenes_pendientes` existe en el esquema,
-  pero aún falta implementar su escritura y procesamiento.
+- SQLite en `hermes.db` es el backend predeterminado del repositorio; MySQL
+  permanece como opción mediante `HERMES_USE_MYSQL=true`.
+- El esquema SQLite de órdenes ya está migrado y respaldado. El repositorio de
+  persistencia existe, pero los endpoints aún no lo usan; eso corresponde a 3.2.
 - El cliente inicia el listener TCP directamente.
+- El admin usa un solo proceso para los listeners/schedulers actuales; revisar
+  este supuesto antes de desplegar con varios workers web.
